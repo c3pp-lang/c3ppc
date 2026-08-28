@@ -1,4 +1,4 @@
-// C3++ Bootstrap Compiler v4.0 (Minimal)
+// C3++ Bootstrap Compiler v6.0
 // Reads C3++ source and generates C code
 // Written in pure C3++, compiled by the Python ASM backend
 
@@ -15,6 +15,57 @@ const MAX_OUT = 131072;
 char outBuf[MAX_OUT];
 int outLen = 0;
 
+// State tracking
+int inClass = 0;
+int inStruct = 0;
+int inEnum = 0;
+int braceDepth = 0;
+
+// Class method tracking: separate from class/struct scope
+int inMethod = 0;
+int methodBraceDepth = 0;
+
+char currentClassName[128];
+char currentParentName[128];
+int hasParent = 0;
+
+// Collected members for auto-constructor
+char memberTypes[64][64];
+char memberNames[64][64];
+int memberCount = 0;
+
+int structClosed = 0;
+
+// Parent field tracking for inherited member access
+char parentFieldNames[64][64];
+int parentFieldCount = 0;
+
+// Stored class member info for parent field lookup
+char storedClassNames[32][64];
+char storedMemberNames[32][64][64];
+char storedMemberTypes[32][64][64];
+int storedMemberCounts[32];
+int storedClassCount = 0;
+
+// Known type names for struct/enum prefix
+char knownTypeNames[64][64];
+int knownTypeIsEnum[64];
+int knownTypeCount = 0;
+
+fn void addKnownType(char* name, int isEnum) {
+    if (knownTypeCount < 64) {
+        char* dst = knownTypeNames[knownTypeCount];
+        while (*name != '\0') { *dst = *name; dst++; name++; }
+        *dst = '\0';
+        knownTypeIsEnum[knownTypeCount] = isEnum;
+        knownTypeCount++;
+    }
+}
+
+// Enum members
+char enumMemberNames[64][128];
+int enumMemberCount = 0;
+
 fn void outInit() { outLen = 0; outBuf[0] = '\0'; }
 
 fn void outAppendChar(char c) {
@@ -26,10 +77,7 @@ fn void outAppendChar(char c) {
 }
 
 fn void outAppend(char* s) {
-    while (*s != '\0') {
-        outAppendChar(*s);
-        s++;
-    }
+    while (*s != '\0') { outAppendChar(*s); s++; }
 }
 
 fn void outNewline() { outAppendChar('\n'); }
@@ -42,8 +90,7 @@ fn int strEq(char* a, char* b) {
 fn int strStartsWith(char* s, char* prefix) {
     while (*prefix != '\0') {
         if (*s != *prefix) return 0;
-        s++;
-        prefix++;
+        s++; prefix++;
     }
     return 1;
 }
@@ -51,6 +98,29 @@ fn int strStartsWith(char* s, char* prefix) {
 fn char* skipSpaces(char* s) {
     while (*s == ' ' || *s == '\t' || *s == '\n' || *s == '\r') s++;
     return s;
+}
+
+fn int strLen(char* s) {
+    int n = 0;
+    while (*s != '\0') { n++; s++; }
+    return n;
+}
+
+fn void copyWord(char* dst, char* src) {
+    while (*src != '\0' && *src != ' ' && *src != '\t' && *src != '(' &&
+           *src != '{' && *src != ';' && *src != ',' && *src != '\n') {
+        *dst = *src; dst++; src++;
+    }
+    *dst = '\0';
+}
+
+fn int isIdentChar(char c) {
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+           (c >= '0' && c <= '9') || c == '_';
+}
+
+fn int isDigit(char c) {
+    return c >= '0' && c <= '9';
 }
 
 fn int readFile(char* path, char* buf, int maxLen) {
@@ -74,140 +144,1085 @@ fn int writeFile(char* path, char* content) {
     return 0;
 }
 
-// Convert one line of C3++ to C
-fn void emitLine(char* line) {
+fn void emitWithIndent(char* line) {
+    int i;
+    for (i = 0; i < braceDepth; i++) outAppend("    ");
+    outAppend(line);
+    outNewline();
+}
+
+// Emit without any indent
+fn void emitTopLevel(char* line) {
+    outAppend(line);
+    outNewline();
+}
+
+// Convert C3++ type to C type for display
+fn void emitType(char* type) {
+    if (strEq(type, "string"))  { outAppend("char*"); return; }
+    if (strEq(type, "bool"))    { outAppend("int"); return; }
+    if (strEq(type, "string[]")){ outAppend("char**"); return; }
+    outAppend(type);
+}
+
+// Convert a C3++ type string to C type in a buffer
+fn void convertType(char* dst, char* src) {
+    if (strEq(src, "string"))  { *dst='c';dst++;*dst='h';dst++;*dst='a';dst++;*dst='r';dst++;*dst='*';dst++;*dst='\0'; return; }
+    if (strEq(src, "bool"))    { *dst='i';dst++;*dst='n';dst++;*dst='t';dst++;*dst='\0'; return; }
+    if (strEq(src, "string[]")){ *dst='c';dst++;*dst='h';dst++;*dst='a';dst++;*dst='r';dst++;*dst='*';dst++;*dst='*';dst++;*dst='\0'; return; }
+    while (*src != '\0') { *dst = *src; dst++; src++; }
+    *dst = '\0';
+}
+
+// Replace self->field with self->_parent.field for inherited fields
+fn void replaceSelfParentField(char* line) {
+    if (parentFieldCount == 0) return;
+    int len = strlen(line);
+    char result[1024];
+    int ri = 0;
+    int i = 0;
+    while (i < len) {
+        if (i + 6 < len && line[i]=='s' && line[i+1]=='e' && line[i+2]=='l' && line[i+3]=='f' && line[i+4]=='-' && line[i+5]=='>') {
+            int j = i + 6;
+            int matched = 0;
+            int fi;
+            for (fi = 0; fi < parentFieldCount; fi++) {
+                int flen = strlen(parentFieldNames[fi]);
+                if (strStartsWith(line + j, parentFieldNames[fi])) {
+                    char next = line[j + flen];
+                    if (!isIdentChar(next)) {
+                        // Emit "self->_parent.field"
+                        char* k = "self->_parent.";
+                        while (*k != '\0') { result[ri] = *k; ri++; k++; }
+                        char* fn2 = parentFieldNames[fi];
+                        while (*fn2 != '\0') { result[ri] = *fn2; ri++; fn2++; }
+                        i = j + flen;
+                        matched = 1;
+                        break;
+                    }
+                }
+            }
+            if (matched) continue;
+        }
+        result[ri] = line[i];
+        ri++;
+        i++;
+    }
+    result[ri] = '\0';
+    char* dst2 = line;
+    char* src2 = result;
+    while (*src2 != '\0') { *dst2 = *src2; dst2++; src2++; }
+    *dst2 = '\0';
+}
+
+// ── Transpile a single line ───────────────────────────────────────
+
+fn void transpileLine(char* line) {
     char* s = skipSpaces(line);
     if (*s == '\0') return;
-
-    // Skip comments
     if (s[0] == '/' && s[1] == '/') return;
 
-    // import std::io -> #include <stdio.h>
+    // import -> #include
     if (strStartsWith(s, "import ")) {
         char* p = s + 7;
-        if (strStartsWith(p, "std::io"))     { outAppend("#include <stdio.h>"); outNewline(); return; }
-        if (strStartsWith(p, "std::lib"))    { outAppend("#include <stdlib.h>"); outNewline(); return; }
-        if (strStartsWith(p, "std::string")) { outAppend("#include <string.h>"); outNewline(); return; }
-        if (strStartsWith(p, "stdio"))       { outAppend("#include <stdio.h>"); outNewline(); return; }
-        if (strStartsWith(p, "stdlib"))      { outAppend("#include <stdlib.h>"); outNewline(); return; }
-        if (strStartsWith(p, "string"))      { outAppend("#include <string.h>"); outNewline(); return; }
+        if (strStartsWith(p, "std::io"))     { emitWithIndent("#include <stdio.h>"); return; }
+        if (strStartsWith(p, "std::lib"))    { emitWithIndent("#include <stdlib.h>"); return; }
+        if (strStartsWith(p, "std::string")) { emitWithIndent("#include <string.h>"); return; }
+        if (strStartsWith(p, "std::math"))   { emitWithIndent("#include <math.h>"); return; }
+        if (strStartsWith(p, "stdio"))       { emitWithIndent("#include <stdio.h>"); return; }
+        if (strStartsWith(p, "stdlib"))      { emitWithIndent("#include <stdlib.h>"); return; }
+        if (strStartsWith(p, "string"))      { emitWithIndent("#include <string.h>"); return; }
         return;
     }
 
     // module -> comment
-    if (strStartsWith(s, "module ")) {
-        outAppend("/* module */");
-        outNewline();
-        return;
-    }
+    if (strStartsWith(s, "module ")) { emitWithIndent("/* module */"); return; }
 
-    // const NAME = VALUE; -> #define NAME VALUE
+    // const -> #define
     if (strStartsWith(s, "const ")) {
+        char buf[256];
+        int bi = 0;
+        buf[bi]='#';bi++;buf[bi]='d';bi++;buf[bi]='e';bi++;buf[bi]='f';bi++;
+        buf[bi]='i';bi++;buf[bi]='n';bi++;buf[bi]='e';bi++;buf[bi]=' ';bi++;
         char* p = s + 6;
-        outAppend("#define ");
-        while (*p != '\0' && *p != '=' && *p != ' ') { outAppendChar(*p); p++; }
-        outAppend(" ");
+        while (*p != '\0' && *p != '=' && *p != ' ') { buf[bi] = *p; bi++; p++; }
+        buf[bi] = ' '; bi++;
         while (*p == ' ' || *p == '=') p++;
-        while (*p != '\0' && *p != ';') { outAppendChar(*p); p++; }
-        outNewline();
+        while (*p != '\0' && *p != ';') { buf[bi] = *p; bi++; p++; }
+        buf[bi] = '\0';
+        emitWithIndent(buf);
         return;
     }
 
-    // fn TYPE NAME(...) { -> TYPE NAME(...) {
-    // fn void main() { -> int main() {
+    // fault -> #define
+    if (strStartsWith(s, "fault ")) {
+        char buf[256];
+        int bi = 0;
+        buf[bi]='#';bi++;buf[bi]='d';bi++;buf[bi]='e';bi++;buf[bi]='f';bi++;
+        buf[bi]='i';bi++;buf[bi]='n';bi++;buf[bi]='e';bi++;buf[bi]=' ';bi++;
+        char* p = s + 6;
+        while (*p != '\0' && *p != '=' && *p != ' ') { buf[bi] = *p; bi++; p++; }
+        buf[bi] = ' '; bi++;
+        buf[bi] = '('; bi++;
+        while (*p == ' ' || *p == '=') p++;
+        while (*p != '\0' && *p != ';') { buf[bi] = *p; bi++; p++; }
+        buf[bi] = ')'; bi++;
+        buf[bi] = '\0';
+        emitWithIndent(buf);
+        return;
+    }
+
+    // fn -> strip fn, convert types, strip @require/@ensure
     if (strStartsWith(s, "fn ")) {
+        char buf[512];
+        int bi = 0;
         char* p = s + 3;
-        // Handle fn void main -> int main
-        if (strStartsWith(p, "void main")) {
-            outAppend("int main");
-            p = p + 9;
-            while (*p != '\0') { outAppendChar(*p); p++; }
-            outNewline();
-            return;
-        }
-        // Generic: strip fn, convert types
+
+        // Strip @require/@ensure
+        char cleaned[512];
+        int ci = 0;
         while (*p != '\0') {
-            if (strStartsWith(p, "string[]")) { outAppend("char**"); p = p + 8; continue; }
-            if (strStartsWith(p, "string"))   { outAppend("char*");  p = p + 6; continue; }
-            if (strStartsWith(p, "bool"))     { outAppend("int");    p = p + 4; continue; }
-            outAppendChar(*p);
-            p++;
+            if (*p == '@') {
+                p++;
+                while (*p != '\0' && *p != '(') p++;
+                if (*p == '(') {
+                    int pd = 1; p++;
+                    while (*p != '\0' && pd > 0) {
+                        if (*p == '(') pd++;
+                        if (*p == ')') pd--;
+                        p++;
+                    }
+                }
+                while (*p == ' ') p++;
+                continue;
+            }
+            cleaned[ci] = *p; ci++; p++;
         }
-        outNewline();
+        cleaned[ci] = '\0';
+        p = cleaned;
+
+        // fn void main -> int main
+        if (strStartsWith(p, "void main")) {
+            buf[bi]='i';bi++;buf[bi]='n';bi++;buf[bi]='t';bi++;buf[bi]=' ';bi++;
+            p = p + 5;
+        }
+
+        // Convert types
+        while (*p != '\0') {
+            if (strStartsWith(p, "string[]")) {
+                buf[bi]='c';bi++;buf[bi]='h';bi++;buf[bi]='a';bi++;buf[bi]='r';bi++;
+                buf[bi]='*';bi++;buf[bi]='*';bi++;p=p+8;continue;
+            }
+            if (strStartsWith(p, "string")) {
+                buf[bi]='c';bi++;buf[bi]='h';bi++;buf[bi]='a';bi++;buf[bi]='r';bi++;
+                buf[bi]='*';bi++;p=p+6;continue;
+            }
+            if (strStartsWith(p, "bool")) {
+                buf[bi]='i';bi++;buf[bi]='n';bi++;buf[bi]='t';bi++;p=p+4;continue;
+            }
+            buf[bi] = *p; bi++; p++;
+        }
+        buf[bi] = '\0';
+        emitWithIndent(buf);
         return;
     }
 
-    // io::printn("text") -> printf("text\n")
+    // io::printn("text") -> printf("text\n");
     if (strStartsWith(s, "io::printn(\"")) {
-        outAppend("    printf(\"");
-        char* p = s + 11;
-        p++; // skip opening quote
-        while (*p != '\0' && *p != '"') { outAppendChar(*p); p++; }
-        outAppend("\\n\"");
-        outAppend(");");
-        outNewline();
-        return;
-    }
-
-    // io::print("text") -> printf("text")
-    if (strStartsWith(s, "io::print(\"")) {
-        outAppend("    printf(\"");
-        char* p = s + 10;
-        p++;
-        while (*p != '\0' && *p != '"') { outAppendChar(*p); p++; }
-        outAppend("\"");
-        outAppend(");");
-        outNewline();
-        return;
-    }
-
-    // io::printfn("fmt", args) -> printf("fmt\n", args)
-    if (strStartsWith(s, "io::printfn(\"")) {
-        outAppend("    printf(\"");
+        char buf[512];
+        int bi = 0;
+        buf[bi]='p';bi++;buf[bi]='r';bi++;buf[bi]='i';bi++;buf[bi]='n';bi++;
+        buf[bi]='t';bi++;buf[bi]='f';bi++;buf[bi]='(';bi++;buf[bi]='"';bi++;
         char* p = s + 12;
-        p++;
-        while (*p != '\0' && *p != '"') { outAppendChar(*p); p++; }
-        outAppend("\\n\"");
-        if (*p == '"') p++;
-        while (*p != '\0') { outAppendChar(*p); p++; }
-        outNewline();
+        while (*p != '\0' && *p != '"') { buf[bi] = *p; bi++; p++; }
+        buf[bi]='\\';bi++;buf[bi]='n';bi++;buf[bi]='"';bi++;buf[bi]=')';bi++;buf[bi]=';';bi++;
+        buf[bi] = '\0';
+        emitWithIndent(buf);
         return;
     }
 
-    // Everything else: pass through with indent
-    outAppend("    ");
-    outAppend(s);
+    // io::print("text") -> printf("text");
+    if (strStartsWith(s, "io::print(\"")) {
+        char buf[512];
+        int bi = 0;
+        buf[bi]='p';bi++;buf[bi]='r';bi++;buf[bi]='i';bi++;buf[bi]='n';bi++;
+        buf[bi]='t';bi++;buf[bi]='f';bi++;buf[bi]='(';bi++;buf[bi]='"';bi++;
+        char* p = s + 11;
+        while (*p != '\0' && *p != '"') { buf[bi] = *p; bi++; p++; }
+        buf[bi]='"';bi++;buf[bi]=')';bi++;buf[bi]=';';bi++;
+        buf[bi] = '\0';
+        emitWithIndent(buf);
+        return;
+    }
+
+    // io::printfn("fmt", args) -> printf("fmt\n", args);
+    if (strStartsWith(s, "io::printfn(\"")) {
+        char buf[512];
+        int bi = 0;
+        buf[bi]='p';bi++;buf[bi]='r';bi++;buf[bi]='i';bi++;buf[bi]='n';bi++;
+        buf[bi]='t';bi++;buf[bi]='f';bi++;buf[bi]='(';bi++;buf[bi]='"';bi++;
+        char* p = s + 13;
+        while (*p != '\0' && *p != '"') { buf[bi] = *p; bi++; p++; }
+        buf[bi]='\\';bi++;buf[bi]='n';bi++;buf[bi]='"';bi++;
+        if (*p == '"') p++;
+        // Strip trailing ; from args to avoid double ;;
+        while (*p != '\0' && *p != ';') { buf[bi] = *p; bi++; p++; }
+        buf[bi]=';';bi++;
+        buf[bi] = '\0';
+        emitWithIndent(buf);
+        return;
+    }
+
+    // Everything else: pass through (with struct/enum prefix for known types)
+    char outBuf2[512];
+    int oi = 0;
+    int ti;
+    int prefixed = 0;
+    for (ti = 0; ti < knownTypeCount; ti++) {
+        int tlen = strlen(knownTypeNames[ti]);
+        if (strStartsWith(s, knownTypeNames[ti]) && s[tlen] == ' ') {
+            if (knownTypeIsEnum[ti]) {
+                outBuf2[oi]='e';oi++;outBuf2[oi]='n';oi++;outBuf2[oi]='u';oi++;
+                outBuf2[oi]='m';oi++;outBuf2[oi]=' ';oi++;
+            } else {
+                outBuf2[oi]='s';oi++;outBuf2[oi]='t';oi++;outBuf2[oi]='r';oi++;
+                outBuf2[oi]='u';oi++;outBuf2[oi]='c';oi++;outBuf2[oi]='t';oi++;
+                outBuf2[oi]=' ';oi++;
+            }
+            prefixed = 1;
+            break;
+        }
+    }
+    if (prefixed) {
+        while (*s != '\0') { outBuf2[oi] = *s; oi++; s++; }
+        outBuf2[oi] = '\0';
+        emitWithIndent(outBuf2);
+    } else {
+        emitWithIndent(s);
+    }
+}
+
+// ── Emit auto-generated _new constructor ──────────────────────────
+
+fn void emitAutoConstructor() {
+    if (memberCount == 0) return;
+
+    // Count parent fields
+    int parentMemberCount = 0;
+    if (hasParent) {
+        int pi;
+        for (pi = 0; pi < storedClassCount; pi++) {
+            if (strEq(storedClassNames[pi], currentParentName)) {
+                parentMemberCount = storedMemberCounts[pi];
+                break;
+            }
+        }
+    }
+
+    // Emit: struct ClassName ClassName_new(params)
+    outAppend("struct ");
+    outAppend(currentClassName);
+    outAppend(" ");
+    outAppend(currentClassName);
+    outAppend("_new(");
+
+    int totalParams = parentMemberCount + memberCount;
+    if (totalParams == 0) {
+        outAppend("void");
+    } else {
+        // Parent params
+        if (hasParent) {
+            int pi;
+            for (pi = 0; pi < storedClassCount; pi++) {
+                if (strEq(storedClassNames[pi], currentParentName)) {
+                    int fi;
+                    for (fi = 0; fi < storedMemberCounts[pi]; fi++) {
+                        if (fi > 0) outAppend(", ");
+                        char convType[64];
+                        convertType(convType, storedMemberTypes[pi][fi]);
+                        outAppend(convType);
+                        outAppend(" ");
+                        outAppend(storedMemberNames[pi][fi]);
+                    }
+                    break;
+                }
+            }
+        }
+        // Own params
+        int j;
+        for (j = 0; j < memberCount; j++) {
+            if (j > 0 || (hasParent && parentMemberCount > 0)) outAppend(", ");
+            char convType[64];
+            convertType(convType, memberTypes[j]);
+            outAppend(convType);
+            outAppend(" ");
+            outAppend(memberNames[j]);
+        }
+    }
+
+    outAppend(")");
+    outNewline();
+    outAppend("{");
+    outNewline();
+    outAppend("    struct ");
+    outAppend(currentClassName);
+    outAppend(" _result;");
+    outNewline();
+    outAppend("    memset(&_result, 0, sizeof(struct ");
+    outAppend(currentClassName);
+    outAppend("));");
+    outNewline();
+
+    // Copy parent fields into _result._parent
+    if (hasParent) {
+        int pi;
+        for (pi = 0; pi < storedClassCount; pi++) {
+            if (strEq(storedClassNames[pi], currentParentName)) {
+                int fi;
+                for (fi = 0; fi < storedMemberCounts[pi]; fi++) {
+                    outAppend("    _result._parent.");
+                    outAppend(storedMemberNames[pi][fi]);
+                    outAppend(" = ");
+                    outAppend(storedMemberNames[pi][fi]);
+                    outAppend(";");
+                    outNewline();
+                }
+                break;
+            }
+        }
+    }
+
+    // Copy own fields
+    int j;
+    for (j = 0; j < memberCount; j++) {
+        outAppend("    _result.");
+        outAppend(memberNames[j]);
+        outAppend(" = ");
+        outAppend(memberNames[j]);
+        outAppend(";");
+        outNewline();
+    }
+    outAppend("    return _result;");
+    outNewline();
+    outAppend("}");
+    outNewline();
     outNewline();
 }
 
-// Transpile C3++ source to C
+// ── Class handling ────────────────────────────────────────────────
+
+fn void startClass(char* line) {
+    char* s = skipSpaces(line);
+    s += 6; // skip "class "
+
+    char name[128];
+    copyWord(name, s);
+    s += strlen(name);
+    while (*s == ' ') s++;
+
+    hasParent = 0;
+    parentFieldCount = 0;
+    if (strStartsWith(s, "extends ")) {
+        s += 8;
+        copyWord(currentParentName, s);
+        hasParent = 1;
+        int pi;
+        for (pi = 0; pi < storedClassCount; pi++) {
+            if (strEq(storedClassNames[pi], currentParentName)) {
+                int fi;
+                for (fi = 0; fi < storedMemberCounts[pi]; fi++) {
+                    char* dst2 = parentFieldNames[parentFieldCount];
+                    char* src2 = storedMemberNames[pi][fi];
+                    while (*src2 != '\0') { *dst2 = *src2; dst2++; src2++; }
+                    *dst2 = '\0';
+                    parentFieldCount++;
+                }
+                break;
+            }
+        }
+    }
+
+    char* dst = currentClassName;
+    char* src = name;
+    while (*src != '\0') { *dst = *src; dst++; src++; }
+    *dst = '\0';
+
+    // Forward declaration
+    outAppend("struct ");
+    outAppend(currentClassName);
+    outAppend(";");
+    outNewline();
+
+    outAppend("/* class ");
+    outAppend(currentClassName);
+    if (hasParent) { outAppend(" extends "); outAppend(currentParentName); }
+    outAppend(" */");
+    outNewline();
+    outAppend("struct ");
+    outAppend(currentClassName);
+    outAppend(" {");
+    outNewline();
+
+    if (hasParent) {
+        outAppend("    struct ");
+        outAppend(currentParentName);
+        outAppend(" _parent;");
+        outNewline();
+    }
+
+    inClass = 1;
+    memberCount = 0;
+    structClosed = 0;
+    braceDepth = 1;
+    inMethod = 0;
+    addKnownType(currentClassName, 0);
+}
+
+fn void closeClass() {
+    if (!structClosed) {
+        outAppend("};");
+        outNewline();
+        outNewline();
+        structClosed = 1;
+    }
+
+    emitAutoConstructor();
+
+    // Store class members for parent field lookup
+    if (storedClassCount < 32) {
+        char* dn = storedClassNames[storedClassCount];
+        char* sn = currentClassName;
+        while (*sn != '\0') { *dn = *sn; dn++; sn++; }
+        *dn = '\0';
+        storedMemberCounts[storedClassCount] = memberCount;
+        int mi2;
+        for (mi2 = 0; mi2 < memberCount; mi2++) {
+            char* dm = storedMemberNames[storedClassCount][mi2];
+            char* sm = memberNames[mi2];
+            while (*sm != '\0') { *dm = *sm; dm++; sm++; }
+            *dm = '\0';
+            char* dt = storedMemberTypes[storedClassCount][mi2];
+            char* st = memberTypes[mi2];
+            while (*st != '\0') { *dt = *st; dt++; st++; }
+            *dt = '\0';
+        }
+        storedClassCount++;
+    }
+}
+
+// Emit a method signature: "ReturnType ClassName_methodName(params) {"
+fn void emitMethodSignature(char* line) {
+    char* s = line;
+    // Skip "fn "
+    s += 3;
+
+    // Get return type
+    char retType[64];
+    copyWord(retType, s);
+    s += strlen(retType);
+    while (*s == ' ') s++;
+
+    // Get method name
+    char methodName[128];
+    copyWord(methodName, s);
+    s += strlen(methodName);
+
+    // Now s points to the params: "(Animal* self) {"
+    // Build the full method signature with struct prefix for types
+
+    // Return type
+    char methodSig[512];
+    int mi = 0;
+    if (strEq(retType, "string")) {
+        methodSig[mi]='c';mi++;methodSig[mi]='h';mi++;methodSig[mi]='a';mi++;
+        methodSig[mi]='r';mi++;methodSig[mi]='*';mi++;
+    } else if (strEq(retType, "bool")) {
+        methodSig[mi]='i';mi++;methodSig[mi]='n';mi++;methodSig[mi]='t';mi++;
+    } else {
+        char* rt = retType;
+        while (*rt != '\0') { methodSig[mi] = *rt; mi++; rt++; }
+    }
+    methodSig[mi] = ' '; mi++;
+
+    // ClassName_methodName
+    char* cn = currentClassName;
+    while (*cn != '\0') { methodSig[mi] = *cn; mi++; cn++; }
+    methodSig[mi] = '_'; mi++;
+    char* mn = methodName;
+    while (*mn != '\0') { methodSig[mi] = *mn; mi++; mn++; }
+
+    // Now parse params: s is at "(Animal* self) {"
+    // We need to find ( and ) and transform param types
+    while (*s != '\0' && *s != '(') {
+        methodSig[mi] = *s; mi++; s++;
+    }
+
+    if (*s == '(') {
+        methodSig[mi] = '('; mi++; s++;
+
+        // Parse each param: "type [*] name [, type [*] name ...]"
+        while (*s != '\0' && *s != ')') {
+            while (*s == ' ') { methodSig[mi] = ' '; mi++; s++; }
+            if (*s == ')') break;
+            if (*s == ',') { methodSig[mi] = ','; mi++; s++; continue; }
+
+            // Read the type word
+            char paramType[64];
+            int pi2 = 0;
+            while (*s != '\0' && *s != ' ' && *s != '*' && *s != ',' && *s != ')') {
+                paramType[pi2] = *s; pi2++; s++;
+            }
+            paramType[pi2] = '\0';
+
+            // Check for pointer star
+            while (*s == ' ') s++;
+            int isPointer = 0;
+            if (*s == '*') { isPointer = 1; s++; }
+
+            // Add struct/enum prefix for known types
+            int knownIdx = -1;
+            int ti;
+            for (ti = 0; ti < knownTypeCount; ti++) {
+                if (strEq(paramType, knownTypeNames[ti])) {
+                    knownIdx = ti;
+                    break;
+                }
+            }
+
+            if (knownIdx >= 0) {
+                if (knownTypeIsEnum[knownIdx]) {
+                    methodSig[mi]='e';mi++;methodSig[mi]='n';mi++;methodSig[mi]='u';mi++;
+                    methodSig[mi]='m';mi++;methodSig[mi]=' ';mi++;
+                } else {
+                    methodSig[mi]='s';mi++;methodSig[mi]='t';mi++;methodSig[mi]='r';mi++;
+                    methodSig[mi]='u';mi++;methodSig[mi]='c';mi++;methodSig[mi]='t';mi++;
+                    methodSig[mi]=' ';mi++;
+                }
+                // Emit the type name after prefix
+                char* tp = paramType;
+                while (*tp != '\0') { methodSig[mi] = *tp; mi++; tp++; }
+            } else if (strEq(paramType, "string")) {
+                methodSig[mi]='c';mi++;methodSig[mi]='h';mi++;methodSig[mi]='a';mi++;
+                methodSig[mi]='r';mi++;methodSig[mi]='*';mi++;
+                isPointer = 0; // string already has *
+            } else if (strEq(paramType, "bool")) {
+                methodSig[mi]='i';mi++;methodSig[mi]='n';mi++;methodSig[mi]='t';mi++;
+            } else {
+                // Copy type as-is
+                char* tp = paramType;
+                while (*tp != '\0') { methodSig[mi] = *tp; mi++; tp++; }
+            }
+
+            // Add pointer star if present
+            if (isPointer) { methodSig[mi] = '*'; mi++; }
+
+            // Add space between type and param name
+            methodSig[mi] = ' '; mi++;
+
+            // Skip spaces before param name
+            while (*s == ' ') s++;
+
+            // Copy param name
+            while (*s != '\0' && *s != ' ' && *s != ',' && *s != ')') {
+                methodSig[mi] = *s; mi++; s++;
+            }
+        }
+        if (*s == ')') { methodSig[mi] = ')'; mi++; s++; }
+    }
+
+    // Copy remaining (should be " {")
+    while (*s != '\0') {
+        methodSig[mi] = *s; mi++; s++;
+    }
+    methodSig[mi] = '\0';
+
+    // Apply self->_parent field replacement
+    replaceSelfParentField(methodSig);
+
+    // Emit at current indent level (inside class body, before struct close)
+    outAppend(methodSig);
+    outNewline();
+}
+
+// ── Process a line inside a class body ────────────────────────────
+
+fn void processClassBodyLine(char* line) {
+    char* s = skipSpaces(line);
+
+    // Empty line
+    if (*s == '\0') return;
+
+    // Method: fn ...
+    if (strStartsWith(s, "fn ")) {
+        // Close struct if not already done
+        if (!structClosed) {
+            outAppend("};");
+            outNewline();
+            outNewline();
+            structClosed = 1;
+        }
+
+        // Emit method signature
+        emitMethodSignature(s);
+
+        // Now we need to track that we're inside a method body
+        // Count the opening { at end of signature
+        inMethod = 1;
+        methodBraceDepth = 0;
+        // The { is in the signature line we just emitted - count it
+        char* check = s;
+        while (*check != '\0') { if (*check == '{') methodBraceDepth++; check++; }
+        braceDepth = 1; // Method body indent
+        return;
+    }
+
+    // Body statement - check if this is a member variable declaration
+    // Member: "type name;" — first word is type, second is name, then ;
+    char type[64];
+    char mName[64];
+    copyWord(type, s);
+    if (type[0] == '\0') return;
+
+    char* afterType = s + strlen(type);
+    while (*afterType == ' ' || *afterType == '\t') afterType++;
+
+    // Pointer type: "Dog* self" - not a member
+    if (*afterType == '*') {
+        replaceSelfParentField(s);
+        transpileLine(s);
+        return;
+    }
+
+    copyWord(mName, afterType);
+    if (mName[0] == '\0') {
+        replaceSelfParentField(s);
+        transpileLine(s);
+        return;
+    }
+
+    char* afterName = afterType + strlen(mName);
+    while (*afterName == ' ' || *afterName == '\t') afterName++;
+
+    // Member variable: after name we see ; or = or end
+    if (*afterName == ';' || *afterName == '=' || *afterName == '\0' || *afterName == '\n') {
+        if (memberCount < 64) {
+            char* dt = memberTypes[memberCount];
+            char* dn = memberNames[memberCount];
+            char* tp = type;
+            while (*tp != '\0') { *dt = *tp; dt++; tp++; }
+            *dt = '\0';
+            char* np = mName;
+            while (*np != '\0') { *dn = *np; dn++; np++; }
+            *dn = '\0';
+            memberCount++;
+        }
+
+        // Emit member to struct with type conversion
+        char memberLine[256];
+        int mi = 0;
+        if (strEq(type, "string")) {
+            memberLine[mi]='c';mi++;memberLine[mi]='h';mi++;memberLine[mi]='a';mi++;
+            memberLine[mi]='r';mi++;memberLine[mi]='*';mi++;
+        } else if (strEq(type, "bool")) {
+            memberLine[mi]='i';mi++;memberLine[mi]='n';mi++;memberLine[mi]='t';mi++;
+        } else {
+            char* tp = type;
+            while (*tp != '\0') { memberLine[mi] = *tp; mi++; tp++; }
+        }
+        memberLine[mi] = ' '; mi++;
+        char* np = mName;
+        while (*np != '\0') { memberLine[mi] = *np; mi++; np++; }
+        memberLine[mi] = ';'; mi++;
+        memberLine[mi] = '\0';
+
+        emitWithIndent(memberLine);
+    } else {
+        // Body statement
+        replaceSelfParentField(s);
+        transpileLine(s);
+    }
+}
+
+// ── Struct handling ───────────────────────────────────────────────
+
+fn void startStruct(char* line) {
+    char* s = skipSpaces(line);
+    s += 7; // skip "struct "
+
+    char name[128];
+    copyWord(name, s);
+
+    char* dst = currentClassName;
+    char* src = name;
+    while (*src != '\0') { *dst = *src; dst++; src++; }
+    *dst = '\0';
+
+    outAppend("struct ");
+    outAppend(currentClassName);
+    outAppend(";");
+    outNewline();
+    outAppend("struct ");
+    outAppend(currentClassName);
+    outAppend(" {");
+    outNewline();
+
+    inStruct = 1;
+    memberCount = 0;
+    braceDepth = 1;
+    addKnownType(currentClassName, 0);
+}
+
+fn void processStructBodyLine(char* line) {
+    char* s = skipSpaces(line);
+
+    if (*s == '}') {
+        outAppend("};");
+        outNewline();
+        outNewline();
+
+        if (memberCount > 0) {
+            outAppend("struct ");
+            outAppend(currentClassName);
+            outAppend(" ");
+            outAppend(currentClassName);
+            outAppend("_new(");
+            int j;
+            for (j = 0; j < memberCount; j++) {
+                if (j > 0) outAppend(", ");
+                char convType[64];
+                convertType(convType, memberTypes[j]);
+                outAppend(convType);
+                outAppend(" ");
+                outAppend(memberNames[j]);
+            }
+            outAppend(")");
+            outNewline();
+            outAppend("{");
+            outNewline();
+            outAppend("    struct ");
+            outAppend(currentClassName);
+            outAppend(" _result;");
+            outNewline();
+            outAppend("    memset(&_result, 0, sizeof(struct ");
+            outAppend(currentClassName);
+            outAppend("));");
+            outNewline();
+            for (j = 0; j < memberCount; j++) {
+                outAppend("    _result.");
+                outAppend(memberNames[j]);
+                outAppend(" = ");
+                outAppend(memberNames[j]);
+                outAppend(";");
+                outNewline();
+            }
+            outAppend("    return _result;");
+            outNewline();
+            outAppend("}");
+            outNewline();
+            outNewline();
+        }
+
+        inStruct = 0;
+        return;
+    }
+
+    if (*s == '\0') return;
+
+    char type[64];
+    char name[64];
+    copyWord(type, s);
+    s += strlen(type);
+    while (*s == ' ' || *s == '\t') s++;
+    int ni = 0;
+    while (*s != '\0' && *s != ';' && *s != '=' && *s != ' ') {
+        name[ni] = *s; ni++; s++;
+    }
+    name[ni] = '\0';
+
+    if (memberCount < 64) {
+        char* dt = memberTypes[memberCount];
+        char* dn = memberNames[memberCount];
+        char* tp = type;
+        while (*tp != '\0') { *dt = *tp; dt++; tp++; }
+        *dt = '\0';
+        char* np = name;
+        while (*np != '\0') { *dn = *np; dn++; np++; }
+        *dn = '\0';
+        memberCount++;
+    }
+
+    char memberLine[256];
+    int mi = 0;
+    if (strEq(type, "string")) {
+        memberLine[mi]='c';mi++;memberLine[mi]='h';mi++;memberLine[mi]='a';mi++;
+        memberLine[mi]='r';mi++;memberLine[mi]='*';mi++;
+    } else if (strEq(type, "bool")) {
+        memberLine[mi]='i';mi++;memberLine[mi]='n';mi++;memberLine[mi]='t';mi++;
+    } else {
+        char* tp = type;
+        while (*tp != '\0') { memberLine[mi] = *tp; mi++; tp++; }
+    }
+    memberLine[mi] = ' '; mi++;
+    char* np = name;
+    while (*np != '\0') { memberLine[mi] = *np; mi++; np++; }
+    memberLine[mi] = ';'; mi++;
+    memberLine[mi] = '\0';
+
+    emitWithIndent(memberLine);
+}
+
+// ── Enum handling ─────────────────────────────────────────────────
+
+fn void startEnum(char* line) {
+    char* s = skipSpaces(line);
+    s += 5; // skip "enum "
+
+    char name[128];
+    copyWord(name, s);
+
+    char* dst = currentClassName;
+    char* src = name;
+    while (*src != '\0') { *dst = *src; dst++; src++; }
+    *dst = '\0';
+
+    outAppend("enum ");
+    outAppend(currentClassName);
+    outAppend(" {");
+    outNewline();
+
+    inEnum = 1;
+    enumMemberCount = 0;
+    braceDepth = 1;
+    addKnownType(currentClassName, 1);
+}
+
+fn void processEnumBodyLine(char* line) {
+    char* s = skipSpaces(line);
+
+    if (*s == '}') {
+        outAppend("};");
+        outNewline();
+        outNewline();
+
+        // Generate _names array
+        outAppend("static const char* ");
+        outAppend(currentClassName);
+        outAppend("_names[] = {");
+        outNewline();
+        int j;
+        for (j = 0; j < enumMemberCount; j++) {
+            outAppend("    \"");
+            outAppend(enumMemberNames[j]);
+            outAppend("\"");
+            if (j < enumMemberCount - 1) outAppend(",");
+            outNewline();
+        }
+        outAppend("};");
+        outNewline();
+
+        // Generate _COUNT as a #define
+        char countStr[16];
+        int n = enumMemberCount;
+        int k = 0;
+        if (n == 0) { countStr[0] = '0'; countStr[1] = '\0'; }
+        else {
+            char tmp[16];
+            int ti2 = 0;
+            while (n > 0) { tmp[ti2] = '0' + (n % 10); ti2++; n /= 10; }
+            int ti3;
+            for (ti3 = ti2 - 1; ti3 >= 0; ti3--) { countStr[k] = tmp[ti3]; k++; }
+            countStr[k] = '\0';
+        }
+        outAppend("#define ");
+        outAppend(currentClassName);
+        outAppend("_COUNT ");
+        outAppend(countStr);
+        outNewline();
+        outNewline();
+
+        inEnum = 0;
+        return;
+    }
+
+    if (*s == '\0') return;
+
+    char member[128];
+    int mi = 0;
+    while (*s != '\0' && *s != ',' && *s != '\n') {
+        member[mi] = *s; mi++; s++;
+    }
+    member[mi] = '\0';
+
+    while (mi > 0 && (member[mi-1] == ' ' || member[mi-1] == '\t')) {
+        mi--; member[mi] = '\0';
+    }
+
+    if (mi == 0) return;
+
+    char mName[128];
+    char* mp = member;
+    int ni = 0;
+    while (*mp != '\0' && *mp != '=' && *mp != ' ') {
+        mName[ni] = *mp; ni++; mp++;
+    }
+    mName[ni] = '\0';
+
+    if (enumMemberCount < 64) {
+        char* dn = enumMemberNames[enumMemberCount];
+        char* src = mName;
+        while (*src != '\0') { *dn = *src; dn++; src++; }
+        *dn = '\0';
+        enumMemberCount++;
+    }
+
+    char emitBuf[256];
+    int ei = 0;
+    char* mp2 = member;
+    while (*mp2 != '\0') { emitBuf[ei] = *mp2; ei++; mp2++; }
+    emitBuf[ei] = ','; ei++;
+    emitBuf[ei] = '\0';
+    emitWithIndent(emitBuf);
+}
+
+// ── Main transpiler ───────────────────────────────────────────────
+
+fn void emitLine(char* line) {
+    char* s = skipSpaces(line);
+    if (*s == '\0') return;
+    if (s[0] == '/' && s[1] == '/') return;
+
+    // Inside class body - handling methods
+    if (inClass) {
+    // Inside a method body
+    if (inMethod) {
+        if (*s == '}') {
+            methodBraceDepth--;
+            braceDepth--;
+            if (methodBraceDepth <= 0) {
+                // Method body closed
+                inMethod = 0;
+                emitWithIndent("}");
+                braceDepth = 0; // Back to class level (outside struct)
+                return;
+            }
+            emitWithIndent("}");
+            return;
+        }
+        // Count inline braces (if/while/for with { at end)
+        {
+            char* bc = s;
+            while (*bc != '\0') {
+                if (*bc == '{') { methodBraceDepth++; braceDepth++; }
+                bc++;
+            }
+        }
+        // Body line inside method - transpile with self->_parent replacement
+        replaceSelfParentField(s);
+        transpileLine(s);
+        return;
+    }
+
+        // Not inside a method - in class body (struct members + method sigs)
+        if (*s == '}') {
+            // Class closing brace
+            closeClass();
+            inClass = 0;
+            return;
+        }
+        processClassBodyLine(s);
+        return;
+    }
+
+    // Inside struct body
+    if (inStruct) {
+        if (*s == '}') {
+            processStructBodyLine(s);
+            return;
+        }
+        processStructBodyLine(s);
+        return;
+    }
+
+    // Inside enum body
+    if (inEnum) {
+        if (*s == '}') { processEnumBodyLine(s); return; }
+        processEnumBodyLine(s);
+        return;
+    }
+
+    // class Name ...
+    if (strStartsWith(s, "class ")) {
+        startClass(s);
+        return;
+    }
+
+    // struct Name { ...
+    if (strStartsWith(s, "struct ")) {
+        char* p = s + 7;
+        while (*p != '\0' && *p != '{' && *p != '\n') p++;
+        if (*p == '{') {
+            startStruct(s);
+            return;
+        }
+        transpileLine(s);
+        return;
+    }
+
+    // enum Name { ...
+    if (strStartsWith(s, "enum ")) {
+        char* p = s + 5;
+        while (*p != '\0' && *p != '{' && *p != '\n') p++;
+        if (*p == '{') {
+            startEnum(s);
+            return;
+        }
+        transpileLine(s);
+        return;
+    }
+
+    // Everything else
+    transpileLine(s);
+}
+
 fn void transpile(char* source) {
     outInit();
+    inClass = 0;
+    inStruct = 0;
+    inEnum = 0;
+    braceDepth = 0;
+    inMethod = 0;
+
+    outAppend("/* Generated by c3ppc-bootstrap v6.0 */");
+    outNewline();
+    outAppend("#include <string.h>");
+    outNewline();
+    outNewline();
 
     char* line = source;
     while (*line != '\0') {
         char* eol = line;
         while (*eol != '\0' && *eol != '\n') eol++;
-
-        char saved = *eol;
-        *eol = '\0';
-
-        emitLine(line);
-
-        *eol = saved;
+        int lineLen = eol - line;
+        // Copy line to local buffer to avoid in-place modification issues
+        char lineBuf[2048];
+        if (lineLen > 2047) lineLen = 2047;
+        int li;
+        for (li = 0; li < lineLen; li++) lineBuf[li] = line[li];
+        lineBuf[lineLen] = '\0';
+        emitLine(lineBuf);
         if (*eol == '\n') eol++;
         line = eol;
     }
 }
 
-fn int main(int argc, string[] argv) {
+fn int main(int argc, char** argv) {
     if (argc < 2) {
-        printf("c3ppc-bootstrap v4.0 - C3++ to C transpiler\n");
+        printf("c3ppc-bootstrap v6.0 - C3++ to C transpiler\n");
         printf("Usage: c3ppc-bootstrap <input.c3pp> [-o output.c]\n");
         return 1;
     }
     if (strEq(argv[1], "--version")) {
-        printf("c3ppc-bootstrap 4.0.0\n");
+        printf("c3ppc-bootstrap 6.0.0\n");
         return 0;
     }
 
