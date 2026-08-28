@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.pyc
+venv/
+
+# Build artifacts
+*.egg-info/
+dist/
+build/
+*.o
+
+# Generated files
+*.s
+*.c
+!c3ppc/__init__.py
+!c3ppc/lexer/__init__.py
+!c3ppc/parser/__init__.py
+!c3ppc/ast_nodes/__init__.py
+!c3ppc/semantic/__init__.py
+!c3ppc/codegen/__init__.py
+
+# Executables
+c3ppc-bootstrap
+hello
+hello_test
+fib
+
+# Bootstrap build artifacts
+c3ppc/bootstrap/c3ppc-bootstrap
+c3ppc/bootstrap/c3ppc-bootstrap.c
+c3ppc/bootstrap/c3ppc-second
+c3ppc/bootstrap/c3ppc-second.c
+c3ppc/bootstrap/hello
+c3ppc/bootstrap/hello.c
+c3ppc/bootstrap/hello2
+c3ppc/bootstrap/hello2.c
+c3ppc/bootstrap/fibonacci
+c3ppc/bootstrap/fibonacci.s
