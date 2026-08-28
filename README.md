@@ -35,7 +35,7 @@ C3++ extends the C3 systems programming language with object-oriented features w
 
 ```bash
 # Clone the repository
-git clone https://github.com/codebuff/c3ppc.git
+git clone https://github.com/c3pp-lang/c3ppc.git
 cd c3ppc
 
 # Create virtual environment
