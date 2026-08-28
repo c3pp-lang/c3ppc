@@ -1,0 +1,32 @@
+// Enums in C3++ — no preprocessor
+// Enums generate C enum + name table
+
+import std::io;
+
+// Simple enum
+enum Color {
+    RED,
+    GREEN,
+    BLUE
+}
+
+// Enum with explicit values
+enum Status {
+    OK = 0,
+    PENDING = 1,
+    FAILED = -1
+}
+
+fn void main() {
+    // Use enum values
+    Color c = RED;
+    Status s = OK;
+
+    io::printfn("Color: %d (RED=%d, GREEN=%d, BLUE=%d)", c, RED, GREEN, BLUE);
+    io::printfn("Status: %d (OK=%d, PENDING=%d, FAILED=%d)", s, OK, PENDING, FAILED);
+
+    // Name lookup using generated name table
+    io::printfn("Color name: %s", Color_names[c]);
+    io::printfn("Status name: %s", Status_names[0]);
+    io::printfn("Status count: %d", Status_COUNT);
+}

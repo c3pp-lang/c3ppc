@@ -1,0 +1,13 @@
+// Simple C3++ program that demonstrates the bootstrapping compiler
+// This is a minimal program that the current compiler can handle
+
+module simple;
+
+import stdio;
+
+fn int main() {
+    printf("Hello from C3++ Bootstrapping Compiler!\n");
+    printf("This program was compiled by c3ppc.\n");
+    printf("The compiler reads C3++ code and generates C code.\n");
+    return 0;
+}

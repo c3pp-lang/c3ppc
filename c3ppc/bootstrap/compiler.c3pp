@@ -1,0 +1,245 @@
+// C3++ Bootstrap Compiler v4.0 (Minimal)
+// Reads C3++ source and generates C code
+// Written in pure C3++, compiled by the Python ASM backend
+
+module c3ppc.bootstrap;
+
+import stdio;
+import stdlib;
+import string;
+
+const MAX_SOURCE = 65536;
+const MAX_OUT = 131072;
+
+// Output buffer
+char outBuf[MAX_OUT];
+int outLen = 0;
+
+fn void outInit() { outLen = 0; outBuf[0] = '\0'; }
+
+fn void outAppendChar(char c) {
+    if (outLen < MAX_OUT - 1) {
+        outBuf[outLen] = c;
+        outLen++;
+        outBuf[outLen] = '\0';
+    }
+}
+
+fn void outAppend(char* s) {
+    while (*s != '\0') {
+        outAppendChar(*s);
+        s++;
+    }
+}
+
+fn void outNewline() { outAppendChar('\n'); }
+
+fn int strEq(char* a, char* b) {
+    while (*a != '\0' && *a == *b) { a++; b++; }
+    return *a == *b;
+}
+
+fn int strStartsWith(char* s, char* prefix) {
+    while (*prefix != '\0') {
+        if (*s != *prefix) return 0;
+        s++;
+        prefix++;
+    }
+    return 1;
+}
+
+fn char* skipSpaces(char* s) {
+    while (*s == ' ' || *s == '\t' || *s == '\n' || *s == '\r') s++;
+    return s;
+}
+
+fn int readFile(char* path, char* buf, int maxLen) {
+    FILE* f = fopen(path, "r");
+    if (f == 0) return -1;
+    fseek(f, 0, 2);
+    int len = ftell(f);
+    fseek(f, 0, 0);
+    if (len >= maxLen) len = maxLen - 1;
+    fread(buf, 1, len, f);
+    buf[len] = '\0';
+    fclose(f);
+    return len;
+}
+
+fn int writeFile(char* path, char* content) {
+    FILE* f = fopen(path, "w");
+    if (f == 0) return -1;
+    fwrite(content, 1, strlen(content), f);
+    fclose(f);
+    return 0;
+}
+
+// Convert one line of C3++ to C
+fn void emitLine(char* line) {
+    char* s = skipSpaces(line);
+    if (*s == '\0') return;
+
+    // Skip comments
+    if (s[0] == '/' && s[1] == '/') return;
+
+    // import std::io -> #include <stdio.h>
+    if (strStartsWith(s, "import ")) {
+        char* p = s + 7;
+        if (strStartsWith(p, "std::io"))     { outAppend("#include <stdio.h>"); outNewline(); return; }
+        if (strStartsWith(p, "std::lib"))    { outAppend("#include <stdlib.h>"); outNewline(); return; }
+        if (strStartsWith(p, "std::string")) { outAppend("#include <string.h>"); outNewline(); return; }
+        if (strStartsWith(p, "stdio"))       { outAppend("#include <stdio.h>"); outNewline(); return; }
+        if (strStartsWith(p, "stdlib"))      { outAppend("#include <stdlib.h>"); outNewline(); return; }
+        if (strStartsWith(p, "string"))      { outAppend("#include <string.h>"); outNewline(); return; }
+        return;
+    }
+
+    // module -> comment
+    if (strStartsWith(s, "module ")) {
+        outAppend("/* module */");
+        outNewline();
+        return;
+    }
+
+    // const NAME = VALUE; -> #define NAME VALUE
+    if (strStartsWith(s, "const ")) {
+        char* p = s + 6;
+        outAppend("#define ");
+        while (*p != '\0' && *p != '=' && *p != ' ') { outAppendChar(*p); p++; }
+        outAppend(" ");
+        while (*p == ' ' || *p == '=') p++;
+        while (*p != '\0' && *p != ';') { outAppendChar(*p); p++; }
+        outNewline();
+        return;
+    }
+
+    // fn TYPE NAME(...) { -> TYPE NAME(...) {
+    // fn void main() { -> int main() {
+    if (strStartsWith(s, "fn ")) {
+        char* p = s + 3;
+        // Handle fn void main -> int main
+        if (strStartsWith(p, "void main")) {
+            outAppend("int main");
+            p = p + 9;
+            while (*p != '\0') { outAppendChar(*p); p++; }
+            outNewline();
+            return;
+        }
+        // Generic: strip fn, convert types
+        while (*p != '\0') {
+            if (strStartsWith(p, "string[]")) { outAppend("char**"); p = p + 8; continue; }
+            if (strStartsWith(p, "string"))   { outAppend("char*");  p = p + 6; continue; }
+            if (strStartsWith(p, "bool"))     { outAppend("int");    p = p + 4; continue; }
+            outAppendChar(*p);
+            p++;
+        }
+        outNewline();
+        return;
+    }
+
+    // io::printn("text") -> printf("text\n")
+    if (strStartsWith(s, "io::printn(\"")) {
+        outAppend("    printf(\"");
+        char* p = s + 11;
+        p++; // skip opening quote
+        while (*p != '\0' && *p != '"') { outAppendChar(*p); p++; }
+        outAppend("\\n\"");
+        outAppend(");");
+        outNewline();
+        return;
+    }
+
+    // io::print("text") -> printf("text")
+    if (strStartsWith(s, "io::print(\"")) {
+        outAppend("    printf(\"");
+        char* p = s + 10;
+        p++;
+        while (*p != '\0' && *p != '"') { outAppendChar(*p); p++; }
+        outAppend("\"");
+        outAppend(");");
+        outNewline();
+        return;
+    }
+
+    // io::printfn("fmt", args) -> printf("fmt\n", args)
+    if (strStartsWith(s, "io::printfn(\"")) {
+        outAppend("    printf(\"");
+        char* p = s + 12;
+        p++;
+        while (*p != '\0' && *p != '"') { outAppendChar(*p); p++; }
+        outAppend("\\n\"");
+        if (*p == '"') p++;
+        while (*p != '\0') { outAppendChar(*p); p++; }
+        outNewline();
+        return;
+    }
+
+    // Everything else: pass through with indent
+    outAppend("    ");
+    outAppend(s);
+    outNewline();
+}
+
+// Transpile C3++ source to C
+fn void transpile(char* source) {
+    outInit();
+
+    char* line = source;
+    while (*line != '\0') {
+        char* eol = line;
+        while (*eol != '\0' && *eol != '\n') eol++;
+
+        char saved = *eol;
+        *eol = '\0';
+
+        emitLine(line);
+
+        *eol = saved;
+        if (*eol == '\n') eol++;
+        line = eol;
+    }
+}
+
+fn int main(int argc, string[] argv) {
+    if (argc < 2) {
+        printf("c3ppc-bootstrap v4.0 - C3++ to C transpiler\n");
+        printf("Usage: c3ppc-bootstrap <input.c3pp> [-o output.c]\n");
+        return 1;
+    }
+    if (strEq(argv[1], "--version")) {
+        printf("c3ppc-bootstrap 4.0.0\n");
+        return 0;
+    }
+
+    char* inputFile = argv[1];
+    char* outputFile = 0;
+    int i = 2;
+    while (i < argc) {
+        if (strEq(argv[i], "-o") && i + 1 < argc) {
+            outputFile = argv[i + 1];
+            i = i + 2;
+        } else {
+            i = i + 1;
+        }
+    }
+
+    char source[MAX_SOURCE];
+    int bytesRead = readFile(inputFile, source, MAX_SOURCE);
+    if (bytesRead < 0) {
+        printf("Error: cannot read '%s'\n", inputFile);
+        return 1;
+    }
+
+    transpile(source);
+
+    if (outputFile != 0) {
+        if (writeFile(outputFile, outBuf) != 0) {
+            printf("Error: cannot write '%s'\n", outputFile);
+            return 1;
+        }
+        printf("Compiled %s -> %s (%d bytes)\n", inputFile, outputFile, outLen);
+    } else {
+        printf("%s", outBuf);
+    }
+    return 0;
+}

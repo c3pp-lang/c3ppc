@@ -1,0 +1,192 @@
+// Lexer for C3++ bootstrapping compiler
+// Simplified version that works with the current compiler
+
+module c3ppc.lexer;
+
+import c3ppc.tokens;
+
+// Lexer state
+int lexerPos;
+int lexerLine;
+int lexerColumn;
+string lexerSource;
+
+// Initialize lexer
+void initLexer(string source) {
+    lexerSource = source;
+    lexerPos = 0;
+    lexerLine = 1;
+    lexerColumn = 1;
+}
+
+// Peek at current character
+char peekChar() {
+    if (lexerPos >= length(lexerSource)) {
+        return '\0';
+    }
+    return lexerSource[lexerPos];
+}
+
+// Advance and return current character
+char advanceChar() {
+    char c = lexerSource[lexerPos];
+    lexerPos = lexerPos + 1;
+    if (c == '\n') {
+        lexerLine = lexerLine + 1;
+        lexerColumn = 1;
+    } else {
+        lexerColumn = lexerColumn + 1;
+    }
+    return c;
+}
+
+// Skip whitespace
+void skipWhitespace() {
+    while (lexerPos < length(lexerSource)) {
+        char c = peekChar();
+        if (c == ' ' || c == '\t' || c == '\r' || c == '\n') {
+            advanceChar();
+        } else if (c == '/' && lexerPos + 1 < length(lexerSource) && lexerSource[lexerPos + 1] == '/') {
+            // Line comment
+            while (lexerPos < length(lexerSource) && peekChar() != '\n') {
+                advanceChar();
+            }
+        } else {
+            break;
+        }
+    }
+}
+
+// Read string literal
+Token readString() {
+    int startLine = lexerLine;
+    int startCol = lexerColumn;
+    string value = "";
+    char quote = advanceChar(); // Skip opening quote
+    
+    while (lexerPos < length(lexerSource) && peekChar() != quote) {
+        value = value + advanceChar();
+    }
+    
+    if (lexerPos < length(lexerSource)) {
+        advanceChar(); // Skip closing quote
+    }
+    
+    return newToken(STRING_LIT, "\"" + value + "\"", startLine, startCol);
+}
+
+// Read number
+Token readNumber() {
+    int startLine = lexerLine;
+    int startCol = lexerColumn;
+    string value = "";
+    
+    while (lexerPos < length(lexerSource) && peekChar() >= '0' && peekChar() <= '9') {
+        value = value + advanceChar();
+    }
+    
+    // Check for float
+    if (peekChar() == '.' && lexerPos + 1 < length(lexerSource) && lexerSource[lexerPos + 1] >= '0' && lexerSource[lexerPos + 1] <= '9') {
+        value = value + advanceChar(); // .
+        while (lexerPos < length(lexerSource) && peekChar() >= '0' && peekChar() <= '9') {
+            value = value + advanceChar();
+        }
+        return newToken(FLOAT_LIT, value, startLine, startCol);
+    }
+    
+    return newToken(INTEGER_LIT, value, startLine, startCol);
+}
+
+// Read identifier or keyword
+Token readIdentifier() {
+    int startLine = lexerLine;
+    int startCol = lexerColumn;
+    string value = "";
+    
+    while (lexerPos < length(lexerSource) && ((peekChar() >= 'a' && peekChar() <= 'z') || (peekChar() >= 'A' && peekChar() <= 'Z') || (peekChar() >= '0' && peekChar() <= '9') || peekChar() == '_')) {
+        value = value + advanceChar();
+    }
+    
+    // Check if it's a keyword
+    if (isKeyword(value)) {
+        return newToken(KEYWORD, value, startLine, startCol);
+    }
+    
+    return newToken(IDENTIFIER, value, startLine, startCol);
+}
+
+// Get next token
+Token nextToken() {
+    skipWhitespace();
+    
+    if (lexerPos >= length(lexerSource)) {
+        return newToken(EOF_TOKEN, "", lexerLine, lexerColumn);
+    }
+    
+    int startLine = lexerLine;
+    int startCol = lexerColumn;
+    char c = peekChar();
+    
+    // String literal
+    if (c == '"') {
+        return readString();
+    }
+    
+    // Number
+    if (c >= '0' && c <= '9') {
+        return readNumber();
+    }
+    
+    // Identifier or keyword
+    if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_') {
+        return readIdentifier();
+    }
+    
+    // Operators and delimiters
+    advanceChar();
+    
+    if (c == '(') return newToken(LPAREN, "(", startLine, startCol);
+    if (c == ')') return newToken(RPAREN, ")", startLine, startCol);
+    if (c == '{') return newToken(LBRACE, "{", startLine, startCol);
+    if (c == '}') return newToken(RBRACE, "}", startLine, startCol);
+    if (c == '[') return newToken(LBRACKET, "[", startLine, startCol);
+    if (c == ']') return newToken(RBRACKET, "]", startLine, startCol);
+    if (c == ';') return newToken(SEMICOLON, ";", startLine, startCol);
+    if (c == ',') return newToken(COMMA, ",", startLine, startCol);
+    if (c == ':') return newToken(COLON, ":", startLine, startCol);
+    if (c == '.') return newToken(DOT, ".", startLine, startCol);
+    if (c == '+') return newToken(PLUS, "+", startLine, startCol);
+    if (c == '-') return newToken(MINUS, "-", startLine, startCol);
+    if (c == '*') return newToken(STAR, "*", startLine, startCol);
+    if (c == '/') return newToken(SLASH, "/", startLine, startCol);
+    if (c == '%') return newToken(PERCENT, "%", startLine, startCol);
+    if (c == '=') return newToken(ASSIGN, "=", startLine, startCol);
+    if (c == '!') return newToken(NOT_EQUAL, "!=", startLine, startCol);
+    if (c == '<') return newToken(LESS, "<", startLine, startCol);
+    if (c == '>') return newToken(GREATER, ">", startLine, startCol);
+    if (c == '&') return newToken(AND, "&&", startLine, startCol);
+    if (c == '|') return newToken(OR, "||", startLine, startCol);
+    
+    return newToken(INVALID, "" + c, startLine, startCol);
+}
+
+// Tokenize entire source
+Token[] tokenizeSource(string source) {
+    initLexer(source);
+    Token[] tokens = [];
+    Token token;
+    
+    do {
+        token = nextToken();
+        tokens = appendToArray(tokens, token);
+    } while (token.type != EOF_TOKEN);
+    
+    return tokens;
+}
+
+// Helper function to append to array
+Token[] appendToArray(Token[] arr, Token item) {
+    Token[] newArr = arr;
+    newArr = newArr + [item];
+    return newArr;
+}

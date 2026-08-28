@@ -1,0 +1,106 @@
+// Token definitions for C3++ bootstrapping compiler
+// Simplified version that works with the current compiler
+
+module c3ppc.tokens;
+
+// Token types as constants
+const int INTEGER_LIT = 0;
+const int FLOAT_LIT = 1;
+const int STRING_LIT = 2;
+const int CHAR_LIT = 3;
+const int BOOL_LIT = 4;
+const int IDENTIFIER = 5;
+const int KEYWORD = 6;
+const int PLUS = 7;
+const int MINUS = 8;
+const int STAR = 9;
+const int SLASH = 10;
+const int PERCENT = 11;
+const int EQUAL = 12;
+const int NOT_EQUAL = 13;
+const int LESS = 14;
+const int LESS_EQUAL = 15;
+const int GREATER = 16;
+const int GREATER_EQUAL = 17;
+const int AND = 18;
+const int OR = 19;
+const int ASSIGN = 20;
+const int LPAREN = 21;
+const int RPAREN = 22;
+const int LBRACE = 23;
+const int RBRACE = 24;
+const int LBRACKET = 25;
+const int RBRACKET = 26;
+const int SEMICOLON = 27;
+const int COMMA = 28;
+const int COLON = 29;
+const int DOT = 30;
+const int ARROW = 31;
+const int EOF_TOKEN = 32;
+const int INVALID = 33;
+
+// Token structure
+struct Token {
+    int type;
+    string text;
+    int line;
+    int column;
+}
+
+// Create a new token
+Token newToken(int type, string text, int line, int column) {
+    Token t;
+    t.type = type;
+    t.text = text;
+    t.line = line;
+    t.column = column;
+    return t;
+}
+
+// Check if a string is a keyword
+bool isKeyword(string text) {
+    if (text == "class") return true;
+    if (text == "struct") return true;
+    if (text == "enum") return true;
+    if (text == "interface") return true;
+    if (text == "extends") return true;
+    if (text == "implements") return true;
+    if (text == "new") return true;
+    if (text == "this") return true;
+    if (text == "super") return true;
+    if (text == "public") return true;
+    if (text == "private") return true;
+    if (text == "protected") return true;
+    if (text == "static") return true;
+    if (text == "virtual") return true;
+    if (text == "override") return true;
+    if (text == "abstract") return true;
+    if (text == "const") return true;
+    if (text == "fn") return true;
+    if (text == "return") return true;
+    if (text == "if") return true;
+    if (text == "else") return true;
+    if (text == "while") return true;
+    if (text == "for") return true;
+    if (text == "foreach") return true;
+    if (text == "switch") return true;
+    if (text == "case") return true;
+    if (text == "default") return true;
+    if (text == "break") return true;
+    if (text == "continue") return true;
+    if (text == "defer") return true;
+    if (text == "int") return true;
+    if (text == "long") return true;
+    if (text == "short") return true;
+    if (text == "float") return true;
+    if (text == "double") return true;
+    if (text == "char") return true;
+    if (text == "bool") return true;
+    if (text == "void") return true;
+    if (text == "string") return true;
+    if (text == "true") return true;
+    if (text == "false") return true;
+    if (text == "import") return true;
+    if (text == "module") return true;
+    return false;
+}

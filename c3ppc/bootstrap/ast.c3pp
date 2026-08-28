@@ -1,0 +1,405 @@
+// AST node definitions for C3++ bootstrapping compiler
+// Defines the abstract syntax tree structure
+
+module c3ppc.ast;
+
+import c3ppc.tokens;
+
+// AST node types
+enum ASTNodeType {
+    PROGRAM,
+    MODULE_DECL,
+    IMPORT_DECL,
+    
+    // Expressions
+    BINARY_EXPR,
+    UNARY_EXPR,
+    ASSIGNMENT_EXPR,
+    CALL_EXPR,
+    MEMBER_EXPR,
+    INDEX_EXPR,
+    NEW_EXPR,
+    THIS_EXPR,
+    SUPER_EXPR,
+    IDENTIFIER_EXPR,
+    LITERAL_EXPR,
+    
+    // Statements
+    BLOCK,
+    IF_STATEMENT,
+    WHILE_STATEMENT,
+    FOR_STATEMENT,
+    FOREACH_STATEMENT,
+    SWITCH_STATEMENT,
+    RETURN_STATEMENT,
+    BREAK_STATEMENT,
+    CONTINUE_STATEMENT,
+    DEFER_STATEMENT,
+    EXPRESSION_STATEMENT,
+    
+    // Declarations
+    VAR_DECL,
+    FN_DECL,
+    CLASS_DECL,
+    STRUCT_DECL,
+    ENUM_DECL,
+    INTERFACE_DECL,
+    
+    // Types
+    BASIC_TYPE,
+    POINTER_TYPE,
+    ARRAY_TYPE,
+    SLICE_TYPE,
+    
+    // Misc
+    FN_PARAM,
+    CASE_CLAUSE,
+    ENUM_MEMBER,
+    CLASS_BODY,
+    STRUCT_BODY,
+    INTERFACE_BODY
+}
+
+// Base AST node
+class ASTNode {
+    ASTNodeType nodeType;
+    int line;
+    int column;
+    
+    ASTNode(ASTNodeType nodeType, int line, int column) {
+        this.nodeType = nodeType;
+        this.line = line;
+        this.column = column;
+    }
+    
+    virtual string toString() {
+        return "ASTNode";
+    }
+}
+
+// Program node
+class ProgramNode : ASTNode {
+    string moduleName;
+    ASTNode[] imports;
+    ASTNode[] declarations;
+    
+    ProgramNode(string moduleName, ASTNode[] imports, ASTNode[] declarations, int line, int column) : ASTNode(ASTNodeType.PROGRAM, line, column) {
+        this.moduleName = moduleName;
+        this.imports = imports;
+        this.declarations = declarations;
+    }
+    
+    override string toString() {
+        return "Program(" + moduleName + ")";
+    }
+}
+
+// Module declaration
+class ModuleDeclNode : ASTNode {
+    string name;
+    
+    ModuleDeclNode(string name, int line, int column) : ASTNode(ASTNodeType.MODULE_DECL, line, column) {
+        this.name = name;
+    }
+    
+    override string toString() {
+        return "Module(" + name + ")";
+    }
+}
+
+// Import declaration
+class ImportDeclNode : ASTNode {
+    string path;
+    string alias;
+    
+    ImportDeclNode(string path, string alias, int line, int column) : ASTNode(ASTNodeType.IMPORT_DECL, line, column) {
+        this.path = path;
+        this.alias = alias;
+    }
+    
+    override string toString() {
+        return "Import(" + path + ")";
+    }
+}
+
+// Binary expression
+class BinaryExprNode : ASTNode {
+    ASTNode left;
+    string operator;
+    ASTNode right;
+    
+    BinaryExprNode(ASTNode left, string operator, ASTNode right, int line, int column) : ASTNode(ASTNodeType.BINARY_EXPR, line, column) {
+        this.left = left;
+        this.operator = operator;
+        this.right = right;
+    }
+    
+    override string toString() {
+        return "Binary(" + operator + ")";
+    }
+}
+
+// Unary expression
+class UnaryExprNode : ASTNode {
+    string operator;
+    ASTNode operand;
+    bool isPrefix;
+    
+    UnaryExprNode(string operator, ASTNode operand, bool isPrefix, int line, int column) : ASTNode(ASTNodeType.UNARY_EXPR, line, column) {
+        this.operator = operator;
+        this.operand = operand;
+        this.isPrefix = isPrefix;
+    }
+    
+    override string toString() {
+        return "Unary(" + operator + ")";
+    }
+}
+
+// Assignment expression
+class AssignmentExprNode : ASTNode {
+    ASTNode target;
+    string operator;
+    ASTNode value;
+    
+    AssignmentExprNode(ASTNode target, string operator, ASTNode value, int line, int column) : ASTNode(ASTNodeType.ASSIGNMENT_EXPR, line, column) {
+        this.target = target;
+        this.operator = operator;
+        this.value = value;
+    }
+    
+    override string toString() {
+        return "Assignment(" + operator + ")";
+    }
+}
+
+// Call expression
+class CallExprNode : ASTNode {
+    ASTNode callee;
+    ASTNode[] arguments;
+    
+    CallExprNode(ASTNode callee, ASTNode[] arguments, int line, int column) : ASTNode(ASTNodeType.CALL_EXPR, line, column) {
+        this.callee = callee;
+        this.arguments = arguments;
+    }
+    
+    override string toString() {
+        return "Call";
+    }
+}
+
+// Member expression
+class MemberExprNode : ASTNode {
+    ASTNode object;
+    string member;
+    
+    MemberExprNode(ASTNode object, string member, int line, int column) : ASTNode(ASTNodeType.MEMBER_EXPR, line, column) {
+        this.object = object;
+        this.member = member;
+    }
+    
+    override string toString() {
+        return "Member(" + member + ")";
+    }
+}
+
+// Identifier expression
+class IdentifierExprNode : ASTNode {
+    string name;
+    
+    IdentifierExprNode(string name, int line, int column) : ASTNode(ASTNodeType.IDENTIFIER_EXPR, line, column) {
+        this.name = name;
+    }
+    
+    override string toString() {
+        return "Ident(" + name + ")";
+    }
+}
+
+// Literal expression
+class LiteralExprNode : ASTNode {
+    string value;
+    string literalType;
+    
+    LiteralExprNode(string value, string literalType, int line, int column) : ASTNode(ASTNodeType.LITERAL_EXPR, line, column) {
+        this.value = value;
+        this.literalType = literalType;
+    }
+    
+    override string toString() {
+        return "Literal(" + value + ")";
+    }
+}
+
+// Block statement
+class BlockNode : ASTNode {
+    ASTNode[] statements;
+    
+    BlockNode(ASTNode[] statements, int line, int column) : ASTNode(ASTNodeType.BLOCK, line, column) {
+        this.statements = statements;
+    }
+    
+    override string toString() {
+        return "Block(" + statements.length + " stmts)";
+    }
+}
+
+// If statement
+class IfStatementNode : ASTNode {
+    ASTNode condition;
+    ASTNode thenBlock;
+    ASTNode elseBlock;
+    
+    IfStatementNode(ASTNode condition, ASTNode thenBlock, ASTNode elseBlock, int line, int column) : ASTNode(ASTNodeType.IF_STATEMENT, line, column) {
+        this.condition = condition;
+        this.thenBlock = thenBlock;
+        this.elseBlock = elseBlock;
+    }
+    
+    override string toString() {
+        return "If";
+    }
+}
+
+// While statement
+class WhileStatementNode : ASTNode {
+    ASTNode condition;
+    ASTNode body;
+    
+    WhileStatementNode(ASTNode condition, ASTNode body, int line, int column) : ASTNode(ASTNodeType.WHILE_STATEMENT, line, column) {
+        this.condition = condition;
+        this.body = body;
+    }
+    
+    override string toString() {
+        return "While";
+    }
+}
+
+// For statement
+class ForStatementNode : ASTNode {
+    ASTNode init;
+    ASTNode condition;
+    ASTNode update;
+    ASTNode body;
+    
+    ForStatementNode(ASTNode init, ASTNode condition, ASTNode update, ASTNode body, int line, int column) : ASTNode(ASTNodeType.FOR_STATEMENT, line, column) {
+        this.init = init;
+        this.condition = condition;
+        this.update = update;
+        this.body = body;
+    }
+    
+    override string toString() {
+        return "For";
+    }
+}
+
+// Return statement
+class ReturnStatementNode : ASTNode {
+    ASTNode value;
+    
+    ReturnStatementNode(ASTNode value, int line, int column) : ASTNode(ASTNodeType.RETURN_STATEMENT, line, column) {
+        this.value = value;
+    }
+    
+    override string toString() {
+        return "Return";
+    }
+}
+
+// Variable declaration
+class VarDeclNode : ASTNode {
+    string name;
+    ASTNode typeAnnotation;
+    ASTNode initializer;
+    bool isConst;
+    
+    VarDeclNode(string name, ASTNode typeAnnotation, ASTNode initializer, bool isConst, int line, int column) : ASTNode(ASTNodeType.VAR_DECL, line, column) {
+        this.name = name;
+        this.typeAnnotation = typeAnnotation;
+        this.initializer = initializer;
+        this.isConst = isConst;
+    }
+    
+    override string toString() {
+        return "VarDecl(" + name + ")";
+    }
+}
+
+// Function declaration
+class FnDeclNode : ASTNode {
+    string name;
+    ASTNode[] params;
+    ASTNode returnType;
+    ASTNode body;
+    
+    FnDeclNode(string name, ASTNode[] params, ASTNode returnType, ASTNode body, int line, int column) : ASTNode(ASTNodeType.FN_DECL, line, column) {
+        this.name = name;
+        this.params = params;
+        this.returnType = returnType;
+        this.body = body;
+    }
+    
+    override string toString() {
+        return "FnDecl(" + name + ")";
+    }
+}
+
+// Class declaration
+class ClassDeclNode : ASTNode {
+    string name;
+    string baseClass;
+    ASTNode body;
+    
+    ClassDeclNode(string name, string baseClass, ASTNode body, int line, int column) : ASTNode(ASTNodeType.CLASS_DECL, line, column) {
+        this.name = name;
+        this.baseClass = baseClass;
+        this.body = body;
+    }
+    
+    override string toString() {
+        return "ClassDecl(" + name + ")";
+    }
+}
+
+// Function parameter
+class FnParamNode : ASTNode {
+    string name;
+    ASTNode typeAnnotation;
+    
+    FnParamNode(string name, ASTNode typeAnnotation, int line, int column) : ASTNode(ASTNodeType.FN_PARAM, line, column) {
+        this.name = name;
+        this.typeAnnotation = typeAnnotation;
+    }
+    
+    override string toString() {
+        return "Param(" + name + ")";
+    }
+}
+
+// Basic type
+class BasicTypeNode : ASTNode {
+    string name;
+    
+    BasicTypeNode(string name, int line, int column) : ASTNode(ASTNodeType.BASIC_TYPE, line, column) {
+        this.name = name;
+    }
+    
+    override string toString() {
+        return "Type(" + name + ")";
+    }
+}
+
+// Expression statement
+class ExpressionStatementNode : ASTNode {
+    ASTNode expression;
+    
+    ExpressionStatementNode(ASTNode expression, int line, int column) : ASTNode(ASTNodeType.EXPRESSION_STATEMENT, line, column) {
+        this.expression = expression;
+    }
+    
+    override string toString() {
+        return "ExprStmt";
+    }
+}

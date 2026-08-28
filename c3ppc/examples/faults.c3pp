@@ -1,0 +1,76 @@
+// Faults and Optionals in C3++
+// faults are error constants, optionals (?) are nullable types
+
+import std::io;
+import std::lib;
+import std::string;
+
+// Fault constants (error codes)
+fault ERR_NULL = -1;
+fault ERR_OVERFLOW = -2;
+fault ERR_NOT_FOUND = -3;
+
+// Optional return type: int? means nullable int
+// In C: return a pointer (NULL = no value)
+fn int* safe_divide(int a, int b) {
+    if (b == 0) {
+        return 0;  // NULL = fault
+    }
+    int* result = malloc(sizeof(int));
+    *result = a / b;
+    return result;
+}
+
+// Find index
+fn int find_index(char* arr[], int len, char* target) {
+    int i = 0;
+    while (i < len) {
+        if (strcmp(arr[i], target) == 0) {
+            return i;
+        }
+        i++;
+    }
+    return ERR_NOT_FOUND;
+}
+
+fn void main() {
+    // Fault handling with explicit error checks
+    int* result = safe_divide(10, 3);
+    if (result != 0) {
+        io::printfn("10 / 3 = %d", *result);
+        free(result);
+    } else {
+        io::printn("Division failed: fault ERR_NULL");
+    }
+
+    // Division by zero
+    result = safe_divide(10, 0);
+    if (result != 0) {
+        io::printfn("10 / 0 = %d", *result);
+        free(result);
+    } else {
+        io::printn("Division failed: fault ERR_NULL");
+    }
+
+    // Find index
+    char* items[] = {"apple", "banana", "cherry"};
+    int idx = find_index(items, 3, "banana");
+    if (idx >= 0) {
+        io::printfn("Found 'banana' at index %d", idx);
+    } else {
+        io::printfn("Not found, fault code: %d", idx);
+    }
+
+    idx = find_index(items, 3, "grape");
+    if (idx >= 0) {
+        io::printfn("Found 'grape' at index %d", idx);
+    } else {
+        io::printfn("Not found, fault code: %d", idx);
+    }
+
+    io::printn("");
+    io::printn("Fault constants:");
+    io::printfn("  ERR_NULL = %d", ERR_NULL);
+    io::printfn("  ERR_OVERFLOW = %d", ERR_OVERFLOW);
+    io::printfn("  ERR_NOT_FOUND = %d", ERR_NOT_FOUND);
+}

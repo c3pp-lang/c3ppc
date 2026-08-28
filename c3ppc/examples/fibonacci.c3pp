@@ -1,0 +1,34 @@
+// Fibonacci in C3++
+// Demonstrates C3 features: const, io:: functions, fn, while
+
+import std::io;
+
+// C3 constants (ALL_CAPS, no #define)
+const MAX_N = 40;
+
+// Compute fibonacci iteratively
+fn int fibonacci(int n) {
+    if (n <= 1) {
+        return n;
+    }
+    int a = 0;
+    int b = 1;
+    int i = 2;
+    while (i <= n) {
+        int temp = a + b;
+        a = b;
+        b = temp;
+        i++;
+    }
+    return b;
+}
+
+fn void main() {
+    io::printn("Fibonacci numbers:");
+    int i = 0;
+    while (i <= MAX_N) {
+        int result = fibonacci(i);
+        io::printfn("fib(%d) = %d", i, result);
+        i++;
+    }
+}

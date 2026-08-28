@@ -1,0 +1,135 @@
+// Full C3++ Example — classes, enums, faults, contracts
+// Demonstrates all major C3++ features
+
+import std::io;
+import std::lib;
+import std::string;
+
+// ── Enums ────────────────────────────────────────────────────────────
+
+enum LogLevel {
+    DEBUG = 0,
+    INFO = 1,
+    WARN = 2,
+    ERROR = 3
+}
+
+// ── Faults (error constants) ─────────────────────────────────────────
+
+fault ERR_NOMEM = -1;
+fault ERR_BADARG = -2;
+
+// ── Classes ──────────────────────────────────────────────────────────
+
+// Logger class with methods
+class Logger {
+    char* prefix;
+    int level;
+
+    fn void log(Logger* self, int level, char* msg) {
+        if (level >= self->level) {
+            io::printfn("[%s] %s: %s", LogLevel_names[level], self->prefix, msg);
+        }
+    }
+
+    fn void debug(Logger* self, char* msg) {
+        Logger_log(self, DEBUG, msg);
+    }
+
+    fn void info(Logger* self, char* msg) {
+        Logger_log(self, INFO, msg);
+    }
+
+    fn void warn(Logger* self, char* msg) {
+        Logger_log(self, WARN, msg);
+    }
+
+    fn void error(Logger* self, char* msg) {
+        Logger_log(self, ERROR, msg);
+    }
+}
+
+// ── Contracts ────────────────────────────────────────────────────────
+
+fn int add_positive(int a, int b) @require(a > 0) @require(b > 0) @ensure(result > 0) {
+    return a + b;
+}
+
+fn int clamp(int val, int lo, int hi) @require(lo <= hi) @ensure(result >= lo) @ensure(result <= hi) {
+    if (val < lo) {
+        return lo;
+    }
+    if (val > hi) {
+        return hi;
+    }
+    return val;
+}
+
+// ── Optional/fault pattern ───────────────────────────────────────────
+
+fn int* safe_parse_int(char* str) {
+    if (str == 0 || strlen(str) == 0) {
+        return 0;  // NULL = fault
+    }
+    int* result = malloc(sizeof(int));
+    *result = atoi(str);
+    return result;
+}
+
+// ── Main ─────────────────────────────────────────────────────────────
+
+fn void main() {
+    io::printn("=== Full C3++ Example ===");
+    io::printn("");
+
+    // Enums
+    io::printn("Log levels:");
+    int i = 0;
+    while (i < 4) {
+        io::printfn("  %d = %s", i, LogLevel_names[i]);
+        i++;
+    }
+    io::printn("");
+
+    // Classes with methods
+    Logger log = Logger_new("APP", INFO);
+    Logger_info(&log, "Application started");
+    Logger_warn(&log, "Low memory");
+    Logger_error(&log, "Disk full");
+    Logger_debug(&log, "This won't show (below threshold)");
+    io::printn("");
+
+    // Contracts
+    io::printn("Contracts:");
+    int sum = add_positive(3, 4);
+    io::printfn("  add_positive(3, 4) = %d", sum);
+    int c = clamp(15, 0, 10);
+    io::printfn("  clamp(15, 0, 10) = %d", c);
+    c = clamp(-5, 0, 10);
+    io::printfn("  clamp(-5, 0, 10) = %d", c);
+    io::printn("");
+
+    // Optional/fault pattern
+    io::printn("Optional parsing:");
+    int* val = safe_parse_int("42");
+    if (val != 0) {
+        io::printfn("  parsed '42' = %d", *val);
+        free(val);
+    }
+    val = safe_parse_int("");
+    if (val == 0) {
+        io::printn("  parsed '' = NULL (fault)");
+    }
+    val = safe_parse_int("100");
+    if (val != 0) {
+        io::printfn("  parsed '100' = %d", *val);
+        free(val);
+    }
+    io::printn("");
+
+    // Constants
+    io::printfn("Constants: ERR_NOMEM=%d, ERR_BADARG=%d", ERR_NOMEM, ERR_BADARG);
+
+    io::printn("");
+    io::printn("All features working!");
+}

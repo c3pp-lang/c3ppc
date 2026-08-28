@@ -1,0 +1,640 @@
+// Parser for C3++ bootstrapping compiler
+// Parses token stream into AST
+
+module c3ppc.parser;
+
+import c3ppc.tokens;
+import c3ppc.ast;
+
+// Parser class
+class Parser {
+    Token[] tokens;
+    int pos;
+    
+    // Constructor
+    Parser(Token[] tokens) {
+        this.tokens = tokens;
+        this.pos = 0;
+    }
+    
+    // Peek at current token
+    Token peek() {
+        if (pos >= tokens.length) {
+            return new Token(TokenType.EOF_TOKEN, "", 0, 0);
+        }
+        return tokens[pos];
+    }
+    
+    // Advance and return current token
+    Token advance() {
+        Token token = tokens[pos];
+        pos++;
+        return token;
+    }
+    
+    // Check if current token matches expected type
+    bool check(TokenType type) {
+        return peek().type == type;
+    }
+    
+    // Consume token if it matches expected type
+    bool match(TokenType type) {
+        if (check(type)) {
+            advance();
+            return true;
+        }
+        return false;
+    }
+    
+    // Expect token of specific type
+    Token expect(TokenType type) {
+        if (check(type)) {
+            return advance();
+        }
+        // Error handling
+        Token current = peek();
+        print("Error at line " + current.line + ": Expected " + 
+              tokenTypeName(type) + " but got " + current.text);
+        return current;
+    }
+    
+    // Parse program
+    ASTNode parseProgram() {
+        string moduleName = "";
+        ASTNode[] imports = [];
+        ASTNode[] declarations = [];
+        
+        // Parse module declaration
+        if (match(TokenType.KEYWORD) && tokens[pos - 1].text == "module") {
+            moduleName = expect(TokenType.IDENTIFIER).text;
+            expect(TokenType.SEMICOLON);
+        }
+        
+        // Parse imports and declarations
+        while (!check(TokenType.EOF_TOKEN)) {
+            if (check(TokenType.KEYWORD) && peek().text == "import") {
+                imports.append(parseImportDecl());
+            } else {
+                declarations.append(parseDeclaration());
+            }
+        }
+        
+        return new ProgramNode(moduleName, imports, declarations, 1, 1);
+    }
+    
+    // Parse import declaration
+    ASTNode parseImportDecl() {
+        expect(TokenType.KEYWORD); // import
+        string path = expect(TokenType.IDENTIFIER).text;
+        string alias = "";
+        
+        if (match(TokenType.KEYWORD) && tokens[pos - 1].text == "as") {
+            alias = expect(TokenType.IDENTIFIER).text;
+        }
+        
+        expect(TokenType.SEMICOLON);
+        
+        return new ImportDeclNode(path, alias, 1, 1);
+    }
+    
+    // Parse declaration
+    ASTNode parseDeclaration() {
+        if (check(TokenType.KEYWORD)) {
+            string keyword = peek().text;
+            
+            if (keyword == "fn") {
+                return parseFnDecl();
+            } else if (keyword == "class") {
+                return parseClassDecl();
+            } else if (keyword == "struct") {
+                return parseStructDecl();
+            } else if (keyword == "enum") {
+                return parseEnumDecl();
+            } else if (keyword == "interface") {
+                return parseInterfaceDecl();
+            } else if (keyword == "const") {
+                return parseVarDecl(true);
+            }
+        }
+        
+        return parseVarDecl(false);
+    }
+    
+    // Parse variable declaration
+    ASTNode parseVarDecl(bool isConst) {
+        if (isConst) {
+            expect(TokenType.KEYWORD); // const
+        }
+        
+        string name = expect(TokenType.IDENTIFIER).text;
+        ASTNode typeAnnotation = null;
+        ASTNode initializer = null;
+        
+        if (match(TokenType.COLON)) {
+            typeAnnotation = parseType();
+        }
+        
+        if (match(TokenType.ASSIGN)) {
+            initializer = parseExpression();
+        }
+        
+        expect(TokenType.SEMICOLON);
+        
+        return new VarDeclNode(name, typeAnnotation, initializer, isConst, 1, 1);
+    }
+    
+    // Parse function declaration
+    ASTNode parseFnDecl() {
+        expect(TokenType.KEYWORD); // fn
+        string name = expect(TokenType.IDENTIFIER).text;
+        
+        expect(TokenType.LPAREN);
+        ASTNode[] params = [];
+        
+        if (!check(TokenType.RPAREN)) {
+            params.append(parseFnParam());
+            while (match(TokenType.COMMA)) {
+                params.append(parseFnParam());
+            }
+        }
+        
+        expect(TokenType.RPAREN);
+        
+        ASTNode returnType = null;
+        if (match(TokenType.ARROW)) {
+            returnType = parseType();
+        }
+        
+        ASTNode body = null;
+        if (check(TokenType.LBRACE)) {
+            body = parseBlock();
+        } else {
+            expect(TokenType.SEMICOLON);
+        }
+        
+        return new FnDeclNode(name, params, returnType, body, 1, 1);
+    }
+    
+    // Parse function parameter
+    ASTNode parseFnParam() {
+        string name = expect(TokenType.IDENTIFIER).text;
+        expect(TokenType.COLON);
+        ASTNode type = parseType();
+        
+        return new FnParamNode(name, type, 1, 1);
+    }
+    
+    // Parse class declaration
+    ASTNode parseClassDecl() {
+        expect(TokenType.KEYWORD); // class
+        string name = expect(TokenType.IDENTIFIER).text;
+        string baseClass = "";
+        
+        if (match(TokenType.KEYWORD) && tokens[pos - 1].text == "extends") {
+            baseClass = expect(TokenType.IDENTIFIER).text;
+        }
+        
+        ASTNode body = parseClassBody();
+        
+        return new ClassDeclNode(name, baseClass, body, 1, 1);
+    }
+    
+    // Parse class body
+    ASTNode parseClassBody() {
+        expect(TokenType.LBRACE);
+        ASTNode[] members = [];
+        
+        while (!check(TokenType.RBRACE) && !check(TokenType.EOF_TOKEN)) {
+            members.append(parseDeclaration());
+        }
+        
+        expect(TokenType.RBRACE);
+        
+        return new BlockNode(members, 1, 1);
+    }
+    
+    // Parse struct declaration
+    ASTNode parseStructDecl() {
+        expect(TokenType.KEYWORD); // struct
+        string name = expect(TokenType.IDENTIFIER).text;
+        ASTNode body = parseClassBody(); // Reuse class body parser
+        
+        return new ClassDeclNode(name, "", body, 1, 1);
+    }
+    
+    // Parse enum declaration
+    ASTNode parseEnumDecl() {
+        expect(TokenType.KEYWORD); // enum
+        string name = expect(TokenType.IDENTIFIER).text;
+        expect(TokenType.LBRACE);
+        
+        // Parse enum members (simplified)
+        while (!check(TokenType.RBRACE) && !check(TokenType.EOF_TOKEN)) {
+            expect(TokenType.IDENTIFIER);
+            if (match(TokenType.ASSIGN)) {
+                parseExpression();
+            }
+            match(TokenType.COMMA);
+        }
+        
+        expect(TokenType.RBRACE);
+        
+        return new IdentifierExprNode(name, 1, 1);
+    }
+    
+    // Parse interface declaration
+    ASTNode parseInterfaceDecl() {
+        expect(TokenType.KEYWORD); // interface
+        string name = expect(TokenType.IDENTIFIER).text;
+        ASTNode body = parseClassBody(); // Reuse class body parser
+        
+        return new ClassDeclNode(name, "", body, 1, 1);
+    }
+    
+    // Parse type
+    ASTNode parseType() {
+        string name = expect(TokenType.IDENTIFIER).text;
+        return new BasicTypeNode(name, 1, 1);
+    }
+    
+    // Parse block
+    ASTNode parseBlock() {
+        expect(TokenType.LBRACE);
+        ASTNode[] statements = [];
+        
+        while (!check(TokenType.RBRACE) && !check(TokenType.EOF_TOKEN)) {
+            statements.append(parseStatement());
+        }
+        
+        expect(TokenType.RBRACE);
+        
+        return new BlockNode(statements, 1, 1);
+    }
+    
+    // Parse statement
+    ASTNode parseStatement() {
+        if (check(TokenType.KEYWORD)) {
+            string keyword = peek().text;
+            
+            if (keyword == "if") {
+                return parseIfStatement();
+            } else if (keyword == "while") {
+                return parseWhileStatement();
+            } else if (keyword == "for") {
+                return parseForStatement();
+            } else if (keyword == "return") {
+                return parseReturnStatement();
+            } else if (keyword == "break") {
+                advance();
+                expect(TokenType.SEMICOLON);
+                return new IdentifierExprNode("break", 1, 1);
+            } else if (keyword == "continue") {
+                advance();
+                expect(TokenType.SEMICOLON);
+                return new IdentifierExprNode("continue", 1, 1);
+            } else if (keyword == "const" || keyword == "int" || keyword == "string") {
+                return parseVarDecl(keyword == "const");
+            }
+        }
+        
+        return parseExpressionStatement();
+    }
+    
+    // Parse if statement
+    ASTNode parseIfStatement() {
+        expect(TokenType.KEYWORD); // if
+        expect(TokenType.LPAREN);
+        ASTNode condition = parseExpression();
+        expect(TokenType.RPAREN);
+        ASTNode thenBlock = parseBlock();
+        ASTNode elseBlock = null;
+        
+        if (match(TokenType.KEYWORD) && tokens[pos - 1].text == "else") {
+            if (check(TokenType.KEYWORD) && peek().text == "if") {
+                // else if
+                elseBlock = parseIfStatement();
+            } else {
+                elseBlock = parseBlock();
+            }
+        }
+        
+        return new IfStatementNode(condition, thenBlock, elseBlock, 1, 1);
+    }
+    
+    // Parse while statement
+    ASTNode parseWhileStatement() {
+        expect(TokenType.KEYWORD); // while
+        expect(TokenType.LPAREN);
+        ASTNode condition = parseExpression();
+        expect(TokenType.RPAREN);
+        ASTNode body = parseBlock();
+        
+        return new WhileStatementNode(condition, body, 1, 1);
+    }
+    
+    // Parse for statement
+    ASTNode parseForStatement() {
+        expect(TokenType.KEYWORD); // for
+        expect(TokenType.LPAREN);
+        
+        ASTNode init = null;
+        if (!check(TokenType.SEMICOLON)) {
+            init = parseExpression();
+        }
+        expect(TokenType.SEMICOLON);
+        
+        ASTNode condition = null;
+        if (!check(TokenType.SEMICOLON)) {
+            condition = parseExpression();
+        }
+        expect(TokenType.SEMICOLON);
+        
+        ASTNode update = null;
+        if (!check(TokenType.RPAREN)) {
+            update = parseExpression();
+        }
+        expect(TokenType.RPAREN);
+        
+        ASTNode body = parseBlock();
+        
+        return new ForStatementNode(init, condition, update, body, 1, 1);
+    }
+    
+    // Parse return statement
+    ASTNode parseReturnStatement() {
+        expect(TokenType.KEYWORD); // return
+        ASTNode value = null;
+        
+        if (!check(TokenType.SEMICOLON)) {
+            value = parseExpression();
+        }
+        
+        expect(TokenType.SEMICOLON);
+        
+        return new ReturnStatementNode(value, 1, 1);
+    }
+    
+    // Parse expression statement
+    ASTNode parseExpressionStatement() {
+        ASTNode expr = parseExpression();
+        expect(TokenType.SEMICOLON);
+        return new ExpressionStatementNode(expr, 1, 1);
+    }
+    
+    // Parse expression
+    ASTNode parseExpression() {
+        return parseAssignment();
+    }
+    
+    // Parse assignment
+    ASTNode parseAssignment() {
+        ASTNode left = parseOr();
+        
+        if (check(TokenType.ASSIGN) || check(TokenType.PLUS_ASSIGN) ||
+            check(TokenType.MINUS_ASSIGN) || check(TokenType.STAR_ASSIGN) ||
+            check(TokenType.SLASH_ASSIGN) || check(TokenType.PERCENT_ASSIGN)) {
+            string op = advance().text;
+            ASTNode right = parseAssignment();
+            return new AssignmentExprNode(left, op, right, 1, 1);
+        }
+        
+        return left;
+    }
+    
+    // Parse logical OR
+    ASTNode parseOr() {
+        ASTNode left = parseAnd();
+        
+        while (match(TokenType.OR)) {
+            ASTNode right = parseAnd();
+            left = new BinaryExprNode(left, "||", right, 1, 1);
+        }
+        
+        return left;
+    }
+    
+    // Parse logical AND
+    ASTNode parseAnd() {
+        ASTNode left = parseEquality();
+        
+        while (match(TokenType.AND)) {
+            ASTNode right = parseEquality();
+            left = new BinaryExprNode(left, "&&", right, 1, 1);
+        }
+        
+        return left;
+    }
+    
+    // Parse equality
+    ASTNode parseEquality() {
+        ASTNode left = parseComparison();
+        
+        while (check(TokenType.EQUAL) || check(TokenType.NOT_EQUAL)) {
+            string op = advance().text;
+            ASTNode right = parseComparison();
+            left = new BinaryExprNode(left, op, right, 1, 1);
+        }
+        
+        return left;
+    }
+    
+    // Parse comparison
+    ASTNode parseComparison() {
+        ASTNode left = parseAddition();
+        
+        while (check(TokenType.LESS) || check(TokenType.LESS_EQUAL) ||
+               check(TokenType.GREATER) || check(TokenType.GREATER_EQUAL)) {
+            string op = advance().text;
+            ASTNode right = parseAddition();
+            left = new BinaryExprNode(left, op, right, 1, 1);
+        }
+        
+        return left;
+    }
+    
+    // Parse addition
+    ASTNode parseAddition() {
+        ASTNode left = parseMultiplication();
+        
+        while (check(TokenType.PLUS) || check(TokenType.MINUS)) {
+            string op = advance().text;
+            ASTNode right = parseMultiplication();
+            left = new BinaryExprNode(left, op, right, 1, 1);
+        }
+        
+        return left;
+    }
+    
+    // Parse multiplication
+    ASTNode parseMultiplication() {
+        ASTNode left = parseUnary();
+        
+        while (check(TokenType.STAR) || check(TokenType.SLASH) || check(TokenType.PERCENT)) {
+            string op = advance().text;
+            ASTNode right = parseUnary();
+            left = new BinaryExprNode(left, op, right, 1, 1);
+        }
+        
+        return left;
+    }
+    
+    // Parse unary
+    ASTNode parseUnary() {
+        if (check(TokenType.MINUS) || check(TokenType.BANG) || check(TokenType.TILDE)) {
+            string op = advance().text;
+            ASTNode operand = parseUnary();
+            return new UnaryExprNode(op, operand, true, 1, 1);
+        }
+        
+        return parsePostfix();
+    }
+    
+    // Parse postfix
+    ASTNode parsePostfix() {
+        ASTNode expr = parsePrimary();
+        
+        while (true) {
+            if (match(TokenType.LPAREN)) {
+                // Function call
+                ASTNode[] args = [];
+                if (!check(TokenType.RPAREN)) {
+                    args.append(parseExpression());
+                    while (match(TokenType.COMMA)) {
+                        args.append(parseExpression());
+                    }
+                }
+                expect(TokenType.RPAREN);
+                expr = new CallExprNode(expr, args, 1, 1);
+            } else if (match(TokenType.DOT)) {
+                // Member access
+                string member = expect(TokenType.IDENTIFIER).text;
+                expr = new MemberExprNode(expr, member, 1, 1);
+            } else if (match(TokenType.LBRACKET)) {
+                // Index access
+                ASTNode index = parseExpression();
+                expect(TokenType.RBRACKET);
+                expr = new MemberExprNode(expr, "[]", 1, 1);
+            } else {
+                break;
+            }
+        }
+        
+        return expr;
+    }
+    
+    // Parse primary
+    ASTNode parsePrimary() {
+        if (check(TokenType.INTEGER_LIT)) {
+            Token token = advance();
+            return new LiteralExprNode(token.text, "int", token.line, token.column);
+        }
+        
+        if (check(TokenType.FLOAT_LIT)) {
+            Token token = advance();
+            return new LiteralExprNode(token.text, "float", token.line, token.column);
+        }
+        
+        if (check(TokenType.STRING_LIT)) {
+            Token token = advance();
+            return new LiteralExprNode(token.text, "string", token.line, token.column);
+        }
+        
+        if (check(TokenType.CHAR_LIT)) {
+            Token token = advance();
+            return new LiteralExprNode(token.text, "char", token.line, token.column);
+        }
+        
+        if (check(TokenType.IDENTIFIER)) {
+            Token token = advance();
+            return new IdentifierExprNode(token.text, token.line, token.column);
+        }
+        
+        if (check(TokenType.KEYWORD)) {
+            string keyword = peek().text;
+            if (keyword == "true" || keyword == "false") {
+                Token token = advance();
+                return new LiteralExprNode(token.text, "bool", token.line, token.column);
+            } else if (keyword == "this") {
+                advance();
+                return new IdentifierExprNode("this", 1, 1);
+            } else if (keyword == "new") {
+                advance();
+                string className = expect(TokenType.IDENTIFIER).text;
+                expect(TokenType.LPAREN);
+                ASTNode[] args = [];
+                if (!check(TokenType.RPAREN)) {
+                    args.append(parseExpression());
+                    while (match(TokenType.COMMA)) {
+                        args.append(parseExpression());
+                    }
+                }
+                expect(TokenType.RPAREN);
+                return new CallExprNode(new IdentifierExprNode(className, 1, 1), args, 1, 1);
+            }
+        }
+        
+        if (match(TokenType.LPAREN)) {
+            ASTNode expr = parseExpression();
+            expect(TokenType.RPAREN);
+            return expr;
+        }
+        
+        Token current = peek();
+        print("Error at line " + current.line + ": Unexpected token " + current.text);
+        return new IdentifierExprNode("error", current.line, current.column);
+    }
+    
+    // Helper function to get token type name
+    string tokenTypeName(TokenType type) {
+        switch (type) {
+            case TokenType.INTEGER_LIT: return "INTEGER";
+            case TokenType.FLOAT_LIT: return "FLOAT";
+            case TokenType.STRING_LIT: return "STRING";
+            case TokenType.CHAR_LIT: return "CHAR";
+            case TokenType.BOOL_LIT: return "BOOL";
+            case TokenType.IDENTIFIER: return "IDENTIFIER";
+            case TokenType.KEYWORD: return "KEYWORD";
+            case TokenType.PLUS: return "+";
+            case TokenType.MINUS: return "-";
+            case TokenType.STAR: return "*";
+            case TokenType.SLASH: return "/";
+            case TokenType.PERCENT: return "%";
+            case TokenType.CARET: return "^";
+            case TokenType.AMPERSAND: return "&";
+            case TokenType.PIPE: return "|";
+            case TokenType.TILDE: return "~";
+            case TokenType.BANG: return "!";
+            case TokenType.QUESTION: return "?";
+            case TokenType.EQUAL: return "==";
+            case TokenType.NOT_EQUAL: return "!=";
+            case TokenType.LESS: return "<";
+            case TokenType.LESS_EQUAL: return "<=";
+            case TokenType.GREATER: return ">";
+            case TokenType.GREATER_EQUAL: return ">=";
+            case TokenType.AND: return "&&";
+            case TokenType.OR: return "||";
+            case TokenType.ASSIGN: return "=";
+            case TokenType.PLUS_ASSIGN: return "+=";
+            case TokenType.MINUS_ASSIGN: return "-=";
+            case TokenType.STAR_ASSIGN: return "*=";
+            case TokenType.SLASH_ASSIGN: return "/=";
+            case TokenType.PERCENT_ASSIGN: return "%=";
+            case TokenType.PLUS_PLUS: return "++";
+            case TokenType.MINUS_MINUS: return "--";
+            case TokenType.ARROW: return "->";
+            case TokenType.DOUBLE_COLON: return "::";
+            case TokenType.COLON: return ":";
+            case TokenType.DOT: return ".";
+            case TokenType.LPAREN: return "(";
+            case TokenType.RPAREN: return ")";
+            case TokenType.LBRACE: return "{";
+            case TokenType.RBRACE: return "}";
+            case TokenType.LBRACKET: return "[";
+            case TokenType.RBRACKET: return "]";
+            case TokenType.SEMICOLON: return ";";
+            case TokenType.COMMA: return ",";
+            case TokenType.EOF_TOKEN: return "EOF";
+            default: return "UNKNOWN";
+        }
+    }
+}

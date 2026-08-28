@@ -1,0 +1,36 @@
+// Contract Programming in C3++
+// @require = preconditions, @ensure = postconditions
+
+import std::io;
+
+// Function with contracts
+fn int factorial(int n) @require(n >= 0) @ensure(result >= 1) {
+    int result = 1;
+    int i = 2;
+    while (i <= n) {
+        result = result * i;
+        i++;
+    }
+    return result;
+}
+
+// Function with contracts
+fn int clamp(int value, int lo, int hi) @require(lo <= hi) @require(value >= lo) @require(value <= hi) @ensure(result >= lo) @ensure(result <= hi) {
+    return value;
+}
+
+fn void main() {
+    io::printn("Contract-checked functions:");
+
+    int f = factorial(5);
+    io::printfn("factorial(5) = %d", f);
+
+    f = factorial(0);
+    io::printfn("factorial(0) = %d", f);
+
+    int c = clamp(5, 1, 10);
+    io::printfn("clamp(5, 1, 10) = %d", c);
+
+    io::printn("");
+    io::printn("All contracts satisfied!");
+}

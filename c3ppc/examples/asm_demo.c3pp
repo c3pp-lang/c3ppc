@@ -1,0 +1,12 @@
+// ASM Demo - simple C3++ compiled to x86-64 assembly
+// No preprocessor
+
+module asm_demo;
+
+import stdio;
+
+fn int main() {
+    printf("Hello from x86-64 assembly!\n");
+    printf("Compiled by c3ppc -> GAS assembly -> executable\n");
+    return 0;
+}

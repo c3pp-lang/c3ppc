@@ -1,0 +1,56 @@
+// Classes, inheritance, methods in C3++
+
+import std::io;
+
+// Base class
+class Animal {
+    char* name;
+    int age;
+
+    fn void speak(Animal* self) {
+        io::printfn("%s makes a sound", self->name);
+    }
+
+    fn void info(Animal* self) {
+        io::printfn("Name: %s, Age: %d", self->name, self->age);
+    }
+}
+
+// Derived class
+class Dog extends Animal {
+    char* breed;
+
+    fn void bark(Dog* self) {
+        io::printfn("%s says: Woof!", self->name);
+    }
+
+    fn void info(Dog* self) {
+        io::printfn("Name: %s, Age: %d, Breed: %s", self->name, self->age, self->breed);
+    }
+}
+
+// Struct (value type)
+struct Point {
+    int x;
+    int y;
+}
+
+fn void main() {
+    // Create an animal using constructor
+    Animal a = Animal_new("Cat", 3);
+    Animal_speak(&a);
+    Animal_info(&a);
+
+    io::printn("");
+
+    // Create a dog using constructor
+    Dog d = Dog_new("Rex", 5, "German Shepherd");
+    Dog_bark(&d);
+    Dog_info(&d);
+
+    io::printn("");
+
+    // Create a point
+    Point p = Point_new(10, 20);
+    io::printfn("Point: (%d, %d)", p.x, p.y);
+}

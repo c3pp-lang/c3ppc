@@ -1,0 +1,9 @@
+// Hello World in C3++
+// Matches real C3 syntax: io::printn(), fn void main(), import std::io
+
+import std::io;
+
+fn void main()
+{
+    io::printn("Hello, World!");
+}
