@@ -1,0 +1,143 @@
+// raylib6_demo.c3pp — Raylib 6 example: window, shapes, input
+// Demonstrates basic Raylib usage with C3++ interface
+
+import vendor::raylib6;
+
+fn void main()
+{
+    // ── Initialize ───────────────────────────────────────────────────
+    raylib6::InitWindow(800, 450, "Raylib 6 Demo - C3++");
+    raylib6::SetTargetFPS(60);
+
+    // ── State ────────────────────────────────────────────────────────
+    Vector2 ball_pos = {400.0, 225.0};
+    Vector2 ball_vel = {4.0, 3.0};
+    float ball_radius = 20.0;
+    Color ball_color = {255, 0, 0, 255};
+    Color bg_color = {20, 20, 40, 255};
+
+    int score = 0;
+    int show_fps = 1;
+
+    // ── Main loop ────────────────────────────────────────────────────
+    while (!raylib6::WindowShouldClose())
+    {
+        // ── Input ────────────────────────────────────────────────────
+        if (raylib6::IsKeyDown(KEY_RIGHT))
+        {
+            ball_pos.x += 5.0;
+        }
+        if (raylib6::IsKeyDown(KEY_LEFT))
+        {
+            ball_pos.x -= 5.0;
+        }
+        if (raylib6::IsKeyDown(KEY_DOWN))
+        {
+            ball_pos.y += 5.0;
+        }
+        if (raylib6::IsKeyDown(KEY_UP))
+        {
+            ball_pos.y -= 5.0;
+        }
+
+        // Change color with keys
+        if (raylib6::IsKeyPressed(KEY_ONE))
+        {
+            ball_color.r = 255;
+            ball_color.g = 0;
+            ball_color.b = 0;
+        }
+        if (raylib6::IsKeyPressed(KEY_TWO))
+        {
+            ball_color.r = 0;
+            ball_color.g = 255;
+            ball_color.b = 0;
+        }
+        if (raylib6::IsKeyPressed(KEY_THREE))
+        {
+            ball_color.r = 0;
+            ball_color.g = 0;
+            ball_color.b = 255;
+        }
+
+        // Toggle FPS display
+        if (raylib6::IsKeyPressed(KEY_F))
+        {
+            show_fps = !show_fps;
+        }
+
+        // Reset score
+        if (raylib6::IsKeyPressed(KEY_R))
+        {
+            score = 0;
+            ball_pos.x = 400.0;
+            ball_pos.y = 225.0;
+        }
+
+        // ── Update ball movement ─────────────────────────────────────
+        ball_pos.x += ball_vel.x;
+        ball_pos.y += ball_vel.y;
+
+        // Bounce off walls
+        if (ball_pos.x - ball_radius <= 0 || ball_pos.x + ball_radius >= 800)
+        {
+            ball_vel.x = -ball_vel.x;
+            score++;
+        }
+        if (ball_pos.y - ball_radius <= 0 || ball_pos.y + ball_radius >= 450)
+        {
+            ball_vel.y = -ball_vel.y;
+            score++;
+        }
+
+        // Keep ball in bounds
+        if (ball_pos.x < ball_radius) { ball_pos.x = ball_radius; }
+        if (ball_pos.x > 800.0 - ball_radius) { ball_pos.x = 800.0 - ball_radius; }
+        if (ball_pos.y < ball_radius) { ball_pos.y = ball_radius; }
+        if (ball_pos.y > 450.0 - ball_radius) { ball_pos.y = 450.0 - ball_radius; }
+
+        // ── Draw ─────────────────────────────────────────────────────
+        raylib6::BeginDrawing();
+        raylib6::ClearBackground(bg_color);
+
+        // Draw bouncing ball
+        raylib6::DrawCircleV(ball_pos, ball_radius, ball_color);
+
+        // Draw border
+        Color gray = {200, 200, 200, 255};
+        raylib6::DrawRectangleLines(10, 10, 780, 430, gray);
+
+        // Draw info text
+        Vector2 title_pos;
+        title_pos.x = 20;
+        title_pos.y = 20;
+        Color white = {255, 255, 255, 255};
+        raylib6::DrawText("Raylib 6 Demo", 20, 20, 24, white);
+
+        // Draw score bar
+        int bar_width = score * 2;
+        if (bar_width > 700) { bar_width = 700; }
+        Color gold = {255, 200, 0, 255};
+        raylib6::DrawRectangle(50, 400, bar_width, 20, gold);
+
+        // Draw controls help
+        Color lightgray = {200, 200, 200, 255};
+        raylib6::DrawText("Arrows: move | 1/2/3: color | F: fps | R: reset", 20, 420, 16, lightgray);
+
+        // Draw mouse position
+        Vector2 mouse = raylib6::GetMousePosition();
+        Color yellow = {255, 255, 0, 255};
+        raylib6::DrawCircleV(mouse, 5.0, yellow);
+
+        // Toggle FPS
+        if (show_fps)
+        {
+            raylib6::DrawFPS(700, 10);
+        }
+
+        raylib6::EndDrawing();
+    }
+
+    // ── Cleanup ──────────────────────────────────────────────────────
+    raylib6::CloseWindow();
+}

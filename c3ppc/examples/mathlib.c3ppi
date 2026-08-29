@@ -1,0 +1,88 @@
+// mathlib.c3ppi — C3++ interface file for math library
+// Contains declarations only (no implementations)
+// Used for library headers and dynamic loading
+
+module mathlib;
+
+import std::io;
+
+// ── Constants ────────────────────────────────────────────────────────
+const PI = 3.14159265358979;
+const E = 2.71828182845904;
+const TAU = 6.28318530717958;
+
+// ── Fault constants ──────────────────────────────────────────────────
+fault MATH_ERR_NAN = -1;
+fault MATH_ERR_INFINITY = -2;
+fault MATH_ERR_DOMAIN = -3;
+
+// ── Enums ────────────────────────────────────────────────────────────
+enum MathOperation {
+    ADD,
+    SUBTRACT,
+    MULTIPLY,
+    DIVIDE,
+    POWER
+}
+
+// ── Structs ──────────────────────────────────────────────────────────
+struct Vec2 {
+    double x;
+    double y;
+}
+
+struct Vec3 {
+    double x;
+    double y;
+    double z;
+}
+
+struct Matrix4x4 {
+    double m[16];
+}
+
+// ── Classes ──────────────────────────────────────────────────────────
+class Calculator {
+    char* name;
+    int precision;
+
+    fn void set_precision(Calculator* self, int p);
+    fn int get_precision(Calculator* self);
+    fn double calculate(Calculator* self, MathOperation op, double a, double b);
+    fn void reset(Calculator* self);
+}
+
+class Statistics {
+    float* values;
+    int count;
+
+    fn void add_value(Statistics* self, double v);
+    fn double mean(Statistics* self);
+    fn double variance(Statistics* self);
+    fn double std_dev(Statistics* self);
+    fn void clear(Statistics* self);
+}
+
+// ── Free functions ───────────────────────────────────────────────────
+fn double math_abs(double x);
+fn double sqrt(double x);
+fn double pow(double base, double exp);
+fn double log(double x);
+fn double ln(double x);
+fn double sin(double x);
+fn double cos(double x);
+fn double tan(double x);
+fn double atan2(double y, double x);
+fn int min(int a, int b);
+fn int max(int a, int b);
+fn int clamp(int val, int lo, int hi);
+fn int factorial(int n) @require(n >= 0) @ensure(result >= 1);
+fn int fibonacci(int n) @require(n >= 0);
+
+// ── Vector operations ────────────────────────────────────────────────
+fn Vec2 vec2_new(double x, double y);
+fn Vec3 vec3_new(double x, double y, double z);
+fn Vec2 vec2_add(Vec2 a, Vec2 b);
+fn Vec2 vec2_scale(Vec2 v, double s);
+fn double vec2_length(Vec2 v);
+fn double vec2_dot(Vec2 a, Vec2 b);

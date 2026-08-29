@@ -38,6 +38,59 @@ fn void main()
 - **Contracts** — `@require(x > 0)` `@ensure(result > 0)`
 - **Full type system** — `string`, `bool`, `int`, `uint`, `sz`, `usz`, `iptr`, `uptr`
 
+### Interface Files (.c3ppi)
+
+C3++ supports interface files (`.c3ppi`) similar to C3's `.c3i` files. These contain declarations only (no implementations) and are used for:
+
+- Library headers
+- Dynamic library interfaces
+- API documentation
+- Forward declarations
+
+```c3ppi
+// mathlib.c3ppi — Interface file for math library
+module mathlib;
+
+import std::io;
+
+// Constants
+const PI = 3.14159265358979;
+
+// Enums
+enum MathOperation {
+    ADD,
+    SUBTRACT,
+    MULTIPLY,
+    DIVIDE
+}
+
+// Structs
+struct Vec2 {
+    double x;
+    double y;
+}
+
+// Classes (method signatures only, no bodies)
+class Calculator {
+    char* name;
+    int precision;
+
+    fn void set_precision(Calculator* self, int p);
+    fn double calculate(Calculator* self, MathOperation op, double a, double b);
+}
+
+// Free functions (signatures only)
+fn double math_abs(double x);
+fn double sqrt(double x);
+fn Vec2 vec2_add(Vec2 a, Vec2 b);
+```
+
+Compile interface files like regular source:
+```bash
+python3 c3ppc/compiler.py --interface examples/mathlib.c3ppi -o mathlib.c
+python3 c3ppc/compiler.py --c examples/mathlib.c3ppi -o mathlib.c
+```
+
 ### Examples
 
 | File | Description |
@@ -49,14 +102,16 @@ fn void main()
 | `examples/faults.c3pp` | Faults and optional patterns |
 | `examples/contracts.c3pp` | Contract programming |
 | `examples/full.c3pp` | Comprehensive example |
+| `examples/mathlib.c3ppi` | Math library interface |
+| `examples/hello.c3ppi` | Simple interface example |
 
 ## Architecture
 
 ```
-C3++ source (.c3pp)
-        │
-        ▼
-   c3ppc (Python)
+C3++ source (.c3pp)    Interface files (.c3ppi)
+        │                       │
+        ▼                       ▼
+   c3ppc (Python) ──────────────┘
         │
         ▼
 x86-64 assembly (.s)     ← AT&T GAS syntax
@@ -80,6 +135,10 @@ gcc -O2 -o c3ppc-bootstrap c3ppc/bootstrap/c3ppc_bootstrap.c
 ./c3ppc-bootstrap examples/hello.c3pp -o hello.c
 gcc -o hello hello.c
 ./hello
+
+# Compile interface file
+./c3ppc-bootstrap examples/mathlib.c3ppi -o mathlib.c
+gcc -o mathlib mathlib.c
 ```
 
 ## Building

@@ -1,0 +1,30 @@
+// hello.c3ppi — Simple C3++ interface file example
+// Declares a greeting module without implementations
+
+module hello;
+
+import std::io;
+
+// ── Constants ────────────────────────────────────────────────────────
+const VERSION = "1.0.0";
+const MAX_NAME_LEN = 256;
+
+// ── Enums ────────────────────────────────────────────────────────────
+enum GreetingStyle {
+    FORMAL,
+    CASUAL,
+    FRIENDLY
+}
+
+// ── Structs ──────────────────────────────────────────────────────────
+struct Person {
+    char* name;
+    int age;
+    GreetingStyle style;
+}
+
+// ── Functions ────────────────────────────────────────────────────────
+fn void greet(char* name);
+fn void greet_person(Person* p);
+fn void set_greeting_style(GreetingStyle s);
+fn char* get_version();

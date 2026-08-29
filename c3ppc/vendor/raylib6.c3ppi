@@ -1,0 +1,715 @@
+// raylib6.c3ppi — C3++ interface for Raylib 6
+// Declares types, constants, and function signatures in C3++ syntax.
+//
+// Usage in C3++ source:
+//   import vendor::raylib6;
+//   raylib6::InitWindow(800, 450, "Title");
+//   raylib6::BeginDrawing();
+//   raylib6::DrawText("Hello", 10, 10, 20, RED);
+//   raylib6::EndDrawing();
+//   raylib6::CloseWindow();
+
+module vendor::raylib6;
+
+// ── Core types ──────────────────────────────────────────────────
+
+struct Vector2 {
+    float x;
+    float y;
+}
+
+struct Vector3 {
+    float x;
+    float y;
+    float z;
+}
+
+struct Vector4 {
+    float x;
+    float y;
+    float z;
+    float w;
+}
+
+struct Matrix {
+    float m0;
+    float m1;
+    float m2;
+    float m3;
+    float m4;
+    float m5;
+    float m6;
+    float m7;
+    float m8;
+    float m9;
+    float m10;
+    float m11;
+    float m12;
+    float m13;
+    float m14;
+    float m15;
+}
+
+struct Color {
+    unsigned char r;
+    unsigned char g;
+    unsigned char b;
+    unsigned char a;
+}
+
+struct Rectangle {
+    float x;
+    float y;
+    float width;
+    float height;
+}
+
+struct Image {
+    void *data;
+    int width;
+    int height;
+    int mipmaps;
+    int format;
+}
+
+struct Texture {
+    unsigned int id;
+    int width;
+    int height;
+    int mipmaps;
+    int format;
+}
+
+struct RenderTexture {
+    unsigned int id;
+    Texture texture;
+    Texture depth;
+}
+
+struct NPatchInfo {
+    Rectangle source;
+    int layout;
+    int left;
+    int top;
+    int right;
+    int bottom;
+}
+
+struct GlyphInfo {
+    int value;
+    int offsetX;
+    int offsetY;
+    int advanceX;
+    Image image;
+}
+
+struct Font {
+    int baseSize;
+    int glyphCount;
+    int glyphPadding;
+    Texture texture;
+    Rectangle *recs;
+    GlyphInfo *glyphs;
+}
+
+struct Camera2D {
+    Vector2 offset;
+    Vector2 target;
+    float rotation;
+    float zoom;
+}
+
+struct Camera3D {
+    Vector3 position;
+    Vector3 target;
+    Vector3 up;
+    float fovy;
+    int projection;
+}
+
+struct Ray {
+    Vector3 position;
+    Vector3 direction;
+}
+
+struct RayCollision {
+    int hit;
+    float distance;
+    Vector3 point;
+    Vector3 normal;
+}
+
+struct BoundingBox {
+    Vector3 min;
+    Vector3 max;
+}
+
+struct Wave {
+    unsigned int frameCount;
+    unsigned int sampleRate;
+    unsigned int sampleSize;
+    unsigned int channels;
+    void *data;
+}
+
+struct Sound {
+    unsigned int frameCount;
+    unsigned int stream;
+    unsigned int streamBufferSize;
+}
+
+struct Music {
+    int ctxType;
+    void *ctxData;
+    unsigned int frameCount;
+    unsigned int looping;
+    int streamType;
+    unsigned int sampleRate;
+    unsigned int sampleSize;
+    unsigned int channels;
+    unsigned int loopBegin;
+    unsigned int loopEnd;
+    void *data;
+}
+
+struct AudioStream {
+    unsigned int sampleRate;
+    unsigned int sampleSize;
+    unsigned int channels;
+    void *buffer;
+    void *processor;
+}
+
+struct MaterialMap {
+    Texture texture;
+    Color color;
+    float value;
+}
+
+struct Material {
+    MaterialMap maps[12];
+    float params[4];
+    void *shader;
+}
+
+struct Mesh {
+    int vertexCount;
+    int triangleCount;
+    float *vertices;
+    float *texcoords;
+    float *texcoords2;
+    float *normals;
+    float *tangents;
+    unsigned char *colors;
+    unsigned short *indices;
+    float *animVertices;
+    float *animNormals;
+    unsigned char *boneIds;
+    float *boneWeights;
+    unsigned int vaoId;
+    unsigned int vboId[7];
+}
+
+struct Model {
+    Matrix transform;
+    int meshCount;
+    int materialCount;
+    Mesh *meshes;
+    Material *materials;
+    int *meshMaterial;
+    int boneCount;
+    char **boneNames;
+}
+
+struct ModelAnimation {
+    int boneCount;
+    int frameCount;
+    char **boneNames;
+}
+
+struct Shader {
+    unsigned int id;
+    int *locs;
+}
+
+// ── Config flags ────────────────────────────────────────────────
+
+const unsigned int FLAG_VSYNC_HINT              = 0x00000040;
+const unsigned int FLAG_WINDOW_RESIZABLE        = 0x00000004;
+const unsigned int FLAG_WINDOW_UNDECORATED      = 0x00000008;
+const unsigned int FLAG_WINDOW_HIDDEN           = 0x00000080;
+const unsigned int FLAG_WINDOW_MINIMIZED        = 0x00000200;
+const unsigned int FLAG_WINDOW_MAXIMIZED        = 0x00000400;
+const unsigned int FLAG_WINDOW_UNFOCUSED        = 0x00000800;
+const unsigned int FLAG_WINDOW_TOPMOST          = 0x00001000;
+const unsigned int FLAG_WINDOW_ALWAYS_RUN       = 0x00000100;
+const unsigned int FLAG_WINDOW_TRANSPARENT      = 0x00000002;
+const unsigned int FLAG_WINDOW_HIGHDPI          = 0x00002000;
+const unsigned int FLAG_WINDOW_MOUSE_PASSTHROUGH= 0x00004000;
+const unsigned int FLAG_BORDERLESS_WINDOWED_MODE= 0x00008000;
+const unsigned int FLAG_MSAA_4X_HINT            = 0x00000020;
+const unsigned int FLAG_INTERLACED_HINT         = 0x00010000;
+
+// ── Log levels ──────────────────────────────────────────────────
+
+const int LOG_ALL     = 0;
+const int LOG_TRACE   = 1;
+const int LOG_DEBUG   = 2;
+const int LOG_INFO    = 3;
+const int LOG_WARNING = 4;
+const int LOG_ERROR   = 5;
+const int LOG_FATAL   = 6;
+const int LOG_NONE    = 7;
+
+// ── Keyboard keys ───────────────────────────────────────────────
+
+const int KEY_NULL          = 0;
+const int KEY_APOSTROPHE    = 39;
+const int KEY_COMMA         = 44;
+const int KEY_MINUS         = 45;
+const int KEY_PERIOD        = 46;
+const int KEY_SLASH         = 47;
+const int KEY_ZERO          = 48;
+const int KEY_ONE           = 49;
+const int KEY_TWO           = 50;
+const int KEY_THREE         = 51;
+const int KEY_FOUR          = 52;
+const int KEY_FIVE          = 53;
+const int KEY_SIX           = 54;
+const int KEY_SEVEN         = 55;
+const int KEY_EIGHT         = 56;
+const int KEY_NINE          = 57;
+const int KEY_SEMICOLON     = 59;
+const int KEY_EQUAL         = 61;
+const int KEY_A             = 65;
+const int KEY_B             = 66;
+const int KEY_C             = 67;
+const int KEY_D             = 68;
+const int KEY_E             = 69;
+const int KEY_F             = 70;
+const int KEY_G             = 71;
+const int KEY_H             = 72;
+const int KEY_I             = 73;
+const int KEY_J             = 74;
+const int KEY_K             = 75;
+const int KEY_L             = 76;
+const int KEY_M             = 77;
+const int KEY_N             = 78;
+const int KEY_O             = 79;
+const int KEY_P             = 80;
+const int KEY_Q             = 81;
+const int KEY_R             = 82;
+const int KEY_S             = 83;
+const int KEY_T             = 84;
+const int KEY_U             = 85;
+const int KEY_V             = 86;
+const int KEY_W             = 87;
+const int KEY_X             = 88;
+const int KEY_Y             = 89;
+const int KEY_Z             = 90;
+const int KEY_LEFT_BRACKET  = 91;
+const int KEY_BACKSLASH     = 92;
+const int KEY_RIGHT_BRACKET = 93;
+const int KEY_GRAVE         = 96;
+const int KEY_SPACE         = 32;
+const int KEY_ESCAPE        = 256;
+const int KEY_ENTER         = 257;
+const int KEY_TAB           = 258;
+const int KEY_BACKSPACE     = 259;
+const int KEY_INSERT        = 260;
+const int KEY_DELETE        = 261;
+const int KEY_RIGHT         = 262;
+const int KEY_LEFT          = 263;
+const int KEY_DOWN          = 264;
+const int KEY_UP            = 265;
+const int KEY_PAGE_UP       = 266;
+const int KEY_PAGE_DOWN     = 267;
+const int KEY_HOME          = 268;
+const int KEY_END           = 269;
+const int KEY_CAPS_LOCK     = 280;
+const int KEY_SCROLL_LOCK   = 281;
+const int KEY_NUM_LOCK      = 282;
+const int KEY_PRINT_SCREEN  = 283;
+const int KEY_PAUSE         = 284;
+const int KEY_F1            = 290;
+const int KEY_F2            = 291;
+const int KEY_F3            = 292;
+const int KEY_F4            = 293;
+const int KEY_F5            = 294;
+const int KEY_F6            = 295;
+const int KEY_F7            = 296;
+const int KEY_F8            = 297;
+const int KEY_F9            = 298;
+const int KEY_F10           = 299;
+const int KEY_F11           = 300;
+const int KEY_F12           = 301;
+const int KEY_LEFT_SHIFT    = 340;
+const int KEY_LEFT_CONTROL  = 341;
+const int KEY_LEFT_ALT      = 342;
+const int KEY_LEFT_SUPER    = 343;
+const int KEY_RIGHT_SHIFT   = 344;
+const int KEY_RIGHT_CONTROL = 345;
+const int KEY_RIGHT_ALT     = 346;
+const int KEY_RIGHT_SUPER   = 347;
+const int KEY_KB_MENU       = 348;
+const int KEY_KP_0          = 320;
+const int KEY_KP_1          = 321;
+const int KEY_KP_2          = 322;
+const int KEY_KP_3          = 323;
+const int KEY_KP_4          = 324;
+const int KEY_KP_5          = 325;
+const int KEY_KP_6          = 326;
+const int KEY_KP_7          = 327;
+const int KEY_KP_8          = 328;
+const int KEY_KP_9          = 329;
+const int KEY_KP_DECIMAL    = 330;
+const int KEY_KP_DIVIDE     = 331;
+const int KEY_KP_MULTIPLY   = 332;
+const int KEY_KP_SUBTRACT   = 333;
+const int KEY_KP_ADD        = 334;
+const int KEY_KP_ENTER      = 335;
+const int KEY_KP_EQUAL      = 336;
+
+// ── Mouse buttons ───────────────────────────────────────────────
+
+const int MOUSE_BUTTON_LEFT    = 0;
+const int MOUSE_BUTTON_RIGHT   = 1;
+const int MOUSE_BUTTON_MIDDLE  = 2;
+const int MOUSE_BUTTON_SIDE    = 3;
+const int MOUSE_BUTTON_EXTRA   = 4;
+const int MOUSE_BUTTON_FORWARD = 5;
+const int MOUSE_BUTTON_BACK    = 6;
+
+// ── Mouse cursor ────────────────────────────────────────────────
+
+const int MOUSE_CURSOR_DEFAULT        = 0;
+const int MOUSE_CURSOR_ARROW          = 1;
+const int MOUSE_CURSOR_IBEAM          = 2;
+const int MOUSE_CURSOR_CROSSHAIR      = 3;
+const int MOUSE_CURSOR_POINTING_HAND  = 4;
+const int MOUSE_CURSOR_RESIZE_EW      = 5;
+const int MOUSE_CURSOR_RESIZE_NS      = 6;
+const int MOUSE_CURSOR_RESIZE_NWSE    = 7;
+const int MOUSE_CURSOR_RESIZE_NESW    = 8;
+const int MOUSE_CURSOR_RESIZE_ALL     = 9;
+const int MOUSE_CURSOR_NOT_ALLOWED    = 10;
+
+// ── Gamepad buttons ─────────────────────────────────────────────
+
+const int GAMEPAD_BUTTON_LEFT_FACE_UP      = 1;
+const int GAMEPAD_BUTTON_LEFT_FACE_RIGHT   = 2;
+const int GAMEPAD_BUTTON_LEFT_FACE_DOWN    = 3;
+const int GAMEPAD_BUTTON_LEFT_FACE_LEFT    = 4;
+const int GAMEPAD_BUTTON_RIGHT_FACE_UP     = 5;
+const int GAMEPAD_BUTTON_RIGHT_FACE_RIGHT  = 6;
+const int GAMEPAD_BUTTON_RIGHT_FACE_DOWN   = 7;
+const int GAMEPAD_BUTTON_RIGHT_FACE_LEFT   = 8;
+const int GAMEPAD_BUTTON_MIDDLE_LEFT       = 9;
+const int GAMEPAD_BUTTON_MIDDLE            = 10;
+const int GAMEPAD_BUTTON_MIDDLE_RIGHT      = 11;
+const int GAMEPAD_BUTTON_LEFT_FACE_1       = 12;
+const int GAMEPAD_BUTTON_LEFT_FACE_2       = 13;
+const int GAMEPAD_BUTTON_LEFT_FACE_3       = 14;
+const int GAMEPAD_BUTTON_LEFT_FACE_4       = 15;
+const int GAMEPAD_BUTTON_RIGHT_FACE_1      = 16;
+const int GAMEPAD_BUTTON_RIGHT_FACE_2      = 17;
+const int GAMEPAD_BUTTON_RIGHT_FACE_3      = 18;
+const int GAMEPAD_BUTTON_RIGHT_FACE_4      = 19;
+const int GAMEPAD_BUTTON_LEFT_THUMB        = 20;
+const int GAMEPAD_BUTTON_RIGHT_THUMB       = 21;
+
+// ── Gamepad axis ────────────────────────────────────────────────
+
+const int GAMEPAD_AXIS_LEFT_X        = 0;
+const int GAMEPAD_AXIS_LEFT_Y        = 1;
+const int GAMEPAD_AXIS_RIGHT_X       = 2;
+const int GAMEPAD_AXIS_RIGHT_Y       = 3;
+const int GAMEPAD_AXIS_LEFT_TRIGGER  = 4;
+const int GAMEPAD_AXIS_RIGHT_TRIGGER = 5;
+
+// ── Gestures ────────────────────────────────────────────────────
+
+const int GESTURE_NONE        = 0;
+const int GESTURE_TAP         = 1;
+const int GESTURE_DOUBLETAP   = 2;
+const int GESTURE_HOLD        = 4;
+const int GESTURE_DRAG        = 8;
+const int GESTURE_SWIPE_RIGHT = 16;
+const int GESTURE_SWIPE_LEFT  = 32;
+const int GESTURE_SWIPE_UP    = 64;
+const int GESTURE_SWIPE_DOWN  = 128;
+const int GESTURE_PINCH_IN    = 256;
+const int GESTURE_PINCH_OUT   = 512;
+
+// ── Camera ──────────────────────────────────────────────────────
+
+const int CAMERA_CUSTOM       = 0;
+const int CAMERA_FREE         = 1;
+const int CAMERA_ORBITAL      = 2;
+const int CAMERA_FIRST_PERSON = 3;
+const int CAMERA_THIRD_PERSON = 4;
+const int CAMERA_PERSPECTIVE  = 0;
+const int CAMERA_ORTHOGRAPHIC = 1;
+
+// ── Texture formats ─────────────────────────────────────────────
+
+const int PIXELFORMAT_UNCOMPRESSED_GRAYSCALE    = 1;
+const int PIXELFORMAT_UNCOMPRESSED_GRAY_ALPHA   = 2;
+const int PIXELFORMAT_UNCOMPRESSED_R5G6B5       = 3;
+const int PIXELFORMAT_UNCOMPRESSED_R8G8B8       = 4;
+const int PIXELFORMAT_UNCOMPRESSED_R5G5B5A1     = 5;
+const int PIXELFORMAT_UNCOMPRESSED_R4G4B4A4     = 6;
+const int PIXELFORMAT_UNCOMPRESSED_R8G8B8A8     = 7;
+const int PIXELFORMAT_UNCOMPRESSED_R32          = 8;
+const int PIXELFORMAT_UNCOMPRESSED_R32G32B32    = 9;
+const int PIXELFORMAT_UNCOMPRESSED_R32G32B32A32 = 10;
+const int PIXELFORMAT_UNCOMPRESSED_R16          = 11;
+const int PIXELFORMAT_UNCOMPRESSED_R16G16B16    = 12;
+const int PIXELFORMAT_UNCOMPRESSED_R16G16B16A16 = 13;
+const int PIXELFORMAT_COMPRESSED_DXT1_RGB       = 14;
+const int PIXELFORMAT_COMPRESSED_DXT1_RGBA      = 15;
+const int PIXELFORMAT_COMPRESSED_DXT3_RGBA      = 16;
+const int PIXELFORMAT_COMPRESSED_DXT5_RGBA      = 17;
+const int PIXELFORMAT_COMPRESSED_ETC1_RGB       = 18;
+const int PIXELFORMAT_COMPRESSED_ETC2_RGB       = 19;
+const int PIXELFORMAT_COMPRESSED_ETC2_EAC_RGBA  = 20;
+const int PIXELFORMAT_COMPRESSED_PVRT_RGB       = 21;
+const int PIXELFORMAT_COMPRESSED_PVRT_RGBA      = 22;
+const int PIXELFORMAT_COMPRESSED_ASTC_4x4_RGBA  = 23;
+const int PIXELFORMAT_COMPRESSED_ASTC_8x8_RGBA  = 24;
+
+// ── Texture filter ──────────────────────────────────────────────
+
+const int TEXTURE_FILTER_POINT           = 0;
+const int TEXTURE_FILTER_BILINEAR        = 1;
+const int TEXTURE_FILTER_TRILINEAR       = 2;
+const int TEXTURE_FILTER_ANISOTROPIC_4X  = 3;
+const int TEXTURE_FILTER_ANISOTROPIC_8X  = 4;
+const int TEXTURE_FILTER_ANISOTROPIC_16X = 5;
+
+// ── Blend modes ─────────────────────────────────────────────────
+
+const int BLEND_ALPHA             = 0;
+const int BLEND_ADDITIVE          = 1;
+const int BLEND_MULTIPLIED        = 2;
+const int BLEND_ADD_COLORS        = 3;
+const int BLEND_SUBTRACT_COLORS   = 4;
+const int BLEND_ALPHA_PREMULTIPLY = 5;
+const int BLEND_CUSTOM            = 6;
+const int BLEND_CUSTOM_SEPARATE   = 7;
+
+// ── Math ────────────────────────────────────────────────────────
+
+const double PI = 3.14159265358979323846;
+
+// ── Predefined colors ───────────────────────────────────────────
+
+const Color LIGHTGRAY  = (Color){ 200, 200, 200, 255 };
+const Color GRAY       = (Color){ 130, 130, 130, 255 };
+const Color DARKGRAY   = (Color){  80,  80,  80, 255 };
+const Color YELLOW     = (Color){ 253, 249,   0, 255 };
+const Color GOLD       = (Color){ 255, 203,   0, 255 };
+const Color ORANGE     = (Color){ 255, 161,   0, 255 };
+const Color PINK       = (Color){ 255, 109, 194, 255 };
+const Color RED        = (Color){ 230,  41,  55, 255 };
+const Color MAROON     = (Color){ 190,  33,  55, 255 };
+const Color GREEN      = (Color){   0, 228,  48, 255 };
+const Color LIME       = (Color){   0, 158,   0, 255 };
+const Color DARKGREEN  = (Color){   0, 117,  44, 255 };
+const Color SKYBLUE    = (Color){ 102, 191, 255, 255 };
+const Color BLUE       = (Color){   0, 121, 241, 255 };
+const Color DARKBLUE   = (Color){   0,  82, 172, 255 };
+const Color PURPLE     = (Color){ 200, 122, 255, 255 };
+const Color VIOLET     = (Color){ 135,  60, 190, 255 };
+const Color DARKPURPLE = (Color){ 112,  31, 126, 255 };
+const Color BEIGE      = (Color){ 211, 176, 131, 255 };
+const Color BROWN      = (Color){ 127, 106,  79, 255 };
+const Color DARKBROWN  = (Color){  76,  63,  47, 255 };
+const Color WHITE      = (Color){ 255, 255, 255, 255 };
+const Color BLACK      = (Color){   0,   0,   0, 255 };
+const Color BLANK      = (Color){   0,   0,   0,   0 };
+const Color MAGENTA    = (Color){ 255,   0, 255, 255 };
+const Color RAYWHITE   = (Color){ 245, 245, 245, 255 };
+
+// ═══════════════════════════════════════════════════════════════════
+//  Function declarations
+// ═══════════════════════════════════════════════════════════════════
+
+// Window
+fn void InitWindow(int width, int height, char *title);
+fn void CloseWindow();
+fn int  WindowShouldClose();
+fn int  IsWindowReady();
+fn void ToggleFullscreen();
+fn void SetWindowTitle(char *title);
+fn void SetWindowSize(int width, int height);
+fn void SetWindowPosition(int x, int y);
+fn int  GetScreenWidth();
+fn int  GetScreenHeight();
+fn int  GetMonitorCount();
+fn int  GetCurrentMonitor();
+fn void SetTargetFPS(int fps);
+fn int  GetFPS();
+fn float GetFrameTime();
+fn double GetTime();
+
+// Cursor
+fn void ShowCursor();
+fn void HideCursor();
+fn int  IsCursorHidden();
+fn void EnableCursor();
+fn void DisableCursor();
+
+// Drawing
+fn void BeginDrawing();
+fn void EndDrawing();
+fn void ClearBackground(Color color);
+fn void BeginMode2D(Camera2D camera);
+fn void EndMode2D();
+fn void BeginMode3D(Camera3D camera);
+fn void EndMode3D();
+fn void BeginTextureMode(RenderTexture target);
+fn void EndTextureMode();
+fn void BeginShaderMode(Shader shader);
+fn void EndShaderMode();
+fn void BeginBlendMode(int mode);
+fn void EndBlendMode();
+fn void BeginScissorMode(int x, int y, int width, int height);
+fn void EndScissorMode();
+
+// Input - Mouse
+fn int  GetMouseX();
+fn int  GetMouseY();
+fn Vector2 GetMousePosition();
+fn Vector2 GetMouseDelta();
+fn void SetMousePosition(int x, int y);
+fn void SetMouseScale(float scaleX, float scaleY);
+fn float GetMouseWheelMove();
+fn void SetMouseCursor(int cursor);
+
+// Input - Keyboard
+fn int  IsKeyPressed(int key);
+fn int  IsKeyPressedRepeat(int key);
+fn int  IsKeyDown(int key);
+fn int  IsKeyReleased(int key);
+fn int  IsKeyUp(int key);
+fn int  GetKeyPressed();
+fn int  GetCharPressed();
+fn void SetExitKey(int key);
+
+// Input - Gamepad
+fn int  IsGamepadAvailable(int gamepad);
+fn char *GetGamepadName(int gamepad);
+fn int  IsGamepadButtonPressed(int gamepad, int button);
+fn int  IsGamepadButtonDown(int gamepad, int button);
+fn int  IsGamepadButtonReleased(int gamepad, int button);
+fn int  IsGamepadButtonUp(int gamepad, int button);
+fn int  GetGamepadButtonPressed();
+fn int  GetGamepadAxisMovement(int gamepad, int axis);
+
+// Input - Touch
+fn int  GetTouchX();
+fn int  GetTouchY();
+fn Vector2 GetTouchPosition(int finger);
+fn int  GetTouchPointCount();
+
+// Input - Gestures
+fn void SetGesturesEnabled(unsigned int flags);
+fn int  IsGestureDetected(unsigned int gesture);
+fn int  GetGestureDetected();
+fn float GetGestureHoldDuration();
+fn Vector2 GetGestureDragVector();
+fn float GetGestureDragAngle();
+fn Vector2 GetGesturePinchVector();
+fn float GetGesturePinchAngle();
+
+// Shapes - 2D
+fn void DrawPixel(int posX, int posY, Color color);
+fn void DrawLine(int startPosX, int startPosY, int endPosX, int endPosY, Color color);
+fn void DrawLineV(Vector2 startPos, Vector2 endPos, Color color);
+fn void DrawLineEx(Vector2 startPos, Vector2 endPos, float thick, Color color);
+fn void DrawCircle(int centerX, int centerY, float radius, Color color);
+fn void DrawCircleV(Vector2 center, float radius, Color color);
+fn void DrawCircleLines(int centerX, int centerY, float radius, Color color);
+fn void DrawRectangle(int posX, int posY, int width, int height, Color color);
+fn void DrawRectangleV(Vector2 position, Vector2 size, Color color);
+fn void DrawRectangleRec(Rectangle rec, Color color);
+fn void DrawRectanglePro(Rectangle rec, Vector2 origin, float rotation, Color color);
+fn void DrawRectangleLines(int posX, int posY, int width, int height, Color color);
+fn void DrawRectangleLinesEx(Rectangle rec, int lineThick, Color color);
+fn void DrawRectangleRounded(Rectangle rec, float roundness, int segments, Color color);
+fn void DrawTriangle(Vector2 v1, Vector2 v2, Vector2 v3, Color color);
+fn void DrawPoly(Vector2 center, int sides, float radius, float rotation, Color color);
+
+// Shapes - 3D
+fn void DrawCube(Vector3 position, float width, float height, float length, Color color);
+fn void DrawSphere(Vector3 centerPos, float radius, Color color);
+fn void DrawPlane(Vector3 centerPos, Vector2 size, Color color);
+fn void DrawGrid(int slices, float spacing);
+
+// Collision
+fn int  CheckCollisionRecs(Rectangle rec1, Rectangle rec2);
+fn int  CheckCollisionCircles(Vector2 center1, float radius1, Vector2 center2, float radius2);
+fn int  CheckCollisionCircleRec(Vector2 center, float radius, Rectangle rec);
+fn int  CheckCollisionPointRec(Vector2 point, Rectangle rec);
+fn RayCollision GetRayCollisionSphere(Ray ray, Vector3 center, float radius);
+fn RayCollision GetRayCollisionBox(Ray ray, BoundingBox box);
+
+// Text
+fn void DrawFPS(int posX, int posY);
+fn void DrawText(char *text, int posX, int posY, int fontSize, Color color);
+fn void DrawTextEx(Font font, char *text, Vector2 position, float fontSize, float spacing, Color tint);
+fn Font LoadFont(char *fileName);
+fn void UnloadFont(Font font);
+fn int  MeasureText(char *text, int fontSize);
+fn Vector2 MeasureTextEx(Font font, char *text, float fontSize, float spacing);
+
+// Textures - Images
+fn Image LoadImage(char *fileName);
+fn void UnloadImage(Image image);
+fn Image GenImageColor(int width, int height, Color color);
+fn void ImageFormat(Image *image, int newFormat);
+fn void ImageResize(Image *image, int newWidth, int newHeight);
+
+// Textures
+fn Texture LoadTexture(char *fileName);
+fn Texture LoadTextureFromImage(Image image);
+fn RenderTexture LoadRenderTexture(int width, int height);
+fn void UnloadTexture(Texture texture);
+fn void UnloadRenderTexture(RenderTexture target);
+fn void SetTextureFilter(Texture texture, int filter);
+fn void DrawTexture(Texture texture, int posX, int posY, Color tint);
+fn void DrawTextureEx(Texture texture, Vector2 position, float rotation, float scale, Color tint);
+fn void DrawTextureRec(Texture texture, Rectangle source, Vector2 position, Color tint);
+fn void DrawTexturePro(Texture texture, Rectangle source, Rectangle dest, Vector2 origin, float rotation, Color tint);
+
+// Color
+fn Color Fade(Color color, float alpha);
+fn int  ColorToInt(Color color);
+fn Color ColorFromHSV(float hue, float saturation, float value);
+fn Color GetColor(unsigned int hexValue);
+fn int  GetPixelDataSize(int width, int height, int format);
+
+// Models
+fn Model LoadModel(char *fileName);
+fn void UnloadModel(Model model);
+fn void DrawModel(Model model, Vector3 position, float scale, Color tint);
+fn void DrawBoundingBox(BoundingBox box, Color color);
+fn Mesh GenMeshSphere(float radius, int rings, int slices);
+fn Mesh GenMeshCube(float width, float height, float length);
+fn void UnloadMesh(Mesh *mesh);
+
+// Audio
+fn void InitAudioDevice();
+fn void CloseAudioDevice();
+fn void SetMasterVolume(float volume);
+fn Sound LoadSound(char *fileName);
+fn void UnloadSound(Sound sound);
+fn void PlaySound(Sound sound);
+fn void StopSound(Sound sound);
+fn void SetSoundVolume(Sound sound, float volume);
+fn Music LoadMusicStream(char *fileName);
+fn void UnloadMusicStream(Music music);
+fn void PlayMusicStream(Music music);
+fn void UpdateMusicStream(Music music);
+fn void SetMusicVolume(Music music, float volume);
