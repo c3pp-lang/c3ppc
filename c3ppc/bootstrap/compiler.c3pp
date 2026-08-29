@@ -36,6 +36,7 @@ int memberCount = 0;
 
 int structClosed = 0;
 
+
 // Parent field tracking for inherited member access
 char parentFieldNames[64][64];
 int parentFieldCount = 0;
@@ -60,6 +61,52 @@ fn void addKnownType(char* name, int isEnum) {
         knownTypeIsEnum[knownTypeCount] = isEnum;
         knownTypeCount++;
     }
+}
+
+fn int strEq(char* a, char* b);
+
+// Apply struct/enum prefix to known type names in a string
+// Writes result to dst, returns dst
+fn char* applyTypePrefixes(char* dst, char* src) {
+    char word[64];
+    while (*src != '\0') {
+        // Copy non-alphanumeric chars as-is
+        if (!(*src >= 'A' && *src <= 'Z') && !(*src >= 'a' && *src <= 'z') && !(*src >= '0' && *src <= '9') && *src != '_') {
+            *dst = *src; dst++; src++;
+            continue;
+        }
+        // Copy a word
+        int wi = 0;
+        while ((*src >= 'A' && *src <= 'Z') || (*src >= 'a' && *src <= 'z') || (*src >= '0' && *src <= '9') || *src == '_') {
+            word[wi] = *src; wi++; src++;
+        }
+        word[wi] = '\0';
+        // Check if it's a known type
+        int kti;
+        for (kti = 0; kti < knownTypeCount; kti++) {
+            if (strEq(word, knownTypeNames[kti])) {
+                // Don't prefix if preceded by * or . or -> (it's a member access, not a type)
+                char prev = *(dst - 1);
+                if (prev == '*' || prev == '.' || prev == '>') {
+                    break;
+                }
+                if (knownTypeIsEnum[kti]) {
+                    *dst='e';dst++;*dst='n';dst++;*dst='u';dst++;*dst='m';dst++;*dst=' ';dst++;
+                } else {
+                    *dst='s';dst++;*dst='t';dst++;*dst='r';dst++;
+                    *dst='u';dst++;*dst='c';dst++;*dst='t';dst++;*dst=' ';dst++;
+                }
+                break;
+            }
+        }
+        // Copy the word
+        int j;
+        for (j = 0; j < wi; j++) {
+            *dst = word[j]; dst++;
+        }
+    }
+    *dst = '\0';
+    return dst;
 }
 
 // Enum members
@@ -170,6 +217,19 @@ fn void convertType(char* dst, char* src) {
     if (strEq(src, "string"))  { *dst='c';dst++;*dst='h';dst++;*dst='a';dst++;*dst='r';dst++;*dst='*';dst++;*dst='\0'; return; }
     if (strEq(src, "bool"))    { *dst='i';dst++;*dst='n';dst++;*dst='t';dst++;*dst='\0'; return; }
     if (strEq(src, "string[]")){ *dst='c';dst++;*dst='h';dst++;*dst='a';dst++;*dst='r';dst++;*dst='*';dst++;*dst='*';dst++;*dst='\0'; return; }
+    // Check if type needs struct/enum prefix
+    int kti;
+    for (kti = 0; kti < knownTypeCount; kti++) {
+        if (strEq(src, knownTypeNames[kti])) {
+            if (knownTypeIsEnum[kti]) {
+                *dst='e';dst++;*dst='n';dst++;*dst='u';dst++;*dst='m';dst++;*dst=' ';dst++;
+            } else {
+                *dst='s';dst++;*dst='t';dst++;*dst='r';dst++;
+                *dst='u';dst++;*dst='c';dst++;*dst='t';dst++;*dst=' ';dst++;
+            }
+            break;
+        }
+    }
     while (*src != '\0') { *dst = *src; dst++; src++; }
     *dst = '\0';
 }
@@ -238,13 +298,40 @@ fn void transpileLine(char* line) {
     // module -> comment
     if (strStartsWith(s, "module ")) { emitWithIndent("/* module */"); return; }
 
-    // const -> #define
+    // const [TYPE] NAME = VALUE; -> #define NAME VALUE
     if (strStartsWith(s, "const ")) {
         char buf[256];
         int bi = 0;
         buf[bi]='#';bi++;buf[bi]='d';bi++;buf[bi]='e';bi++;buf[bi]='f';bi++;
         buf[bi]='i';bi++;buf[bi]='n';bi++;buf[bi]='e';bi++;buf[bi]=' ';bi++;
         char* p = s + 6;
+        // Skip type keywords (may be compound: unsigned int, long long, etc.)
+        while (1) {
+            int skipped = 0;
+            if (strStartsWith(p, "int ") || strStartsWith(p, "float ") ||
+                strStartsWith(p, "double ") || strStartsWith(p, "char ") ||
+                strStartsWith(p, "unsigned ") || strStartsWith(p, "long ") ||
+                strStartsWith(p, "short ") || strStartsWith(p, "bool ") ||
+                strStartsWith(p, "size_t ")) {
+                while (*p != ' ' && *p != '\0') p++;
+                while (*p == ' ') p++;
+                skipped = 1;
+            }
+            // Also skip known struct/enum types (e.g. Color, Vector2, etc.)
+            if (!skipped) {
+                int kti;
+                for (kti = 0; kti < knownTypeCount; kti++) {
+                    int tlen = strlen(knownTypeNames[kti]);
+                    if (strStartsWith(p, knownTypeNames[kti]) && *(p + tlen) == ' ') {
+                        p += tlen;
+                        while (*p == ' ') p++;
+                        skipped = 1;
+                        break;
+                    }
+                }
+            }
+            if (!skipped) break;
+        }
         while (*p != '\0' && *p != '=' && *p != ' ') { buf[bi] = *p; bi++; p++; }
         buf[bi] = ' '; bi++;
         while (*p == ' ' || *p == '=') p++;
@@ -323,7 +410,14 @@ fn void transpileLine(char* line) {
             buf[bi] = *p; bi++; p++;
         }
         buf[bi] = '\0';
-        emitWithIndent(buf);
+        // Apply struct/enum prefixes for known types
+        if (knownTypeCount > 0) {
+            char prefixed[512];
+            applyTypePrefixes(prefixed, buf);
+            emitWithIndent(prefixed);
+        } else {
+            emitWithIndent(buf);
+        }
         return;
     }
 
@@ -374,28 +468,9 @@ fn void transpileLine(char* line) {
     }
 
     // Everything else: pass through (with struct/enum prefix for known types)
-    char outBuf2[512];
-    int oi = 0;
-    int ti;
-    int prefixed = 0;
-    for (ti = 0; ti < knownTypeCount; ti++) {
-        int tlen = strlen(knownTypeNames[ti]);
-        if (strStartsWith(s, knownTypeNames[ti]) && s[tlen] == ' ') {
-            if (knownTypeIsEnum[ti]) {
-                outBuf2[oi]='e';oi++;outBuf2[oi]='n';oi++;outBuf2[oi]='u';oi++;
-                outBuf2[oi]='m';oi++;outBuf2[oi]=' ';oi++;
-            } else {
-                outBuf2[oi]='s';oi++;outBuf2[oi]='t';oi++;outBuf2[oi]='r';oi++;
-                outBuf2[oi]='u';oi++;outBuf2[oi]='c';oi++;outBuf2[oi]='t';oi++;
-                outBuf2[oi]=' ';oi++;
-            }
-            prefixed = 1;
-            break;
-        }
-    }
-    if (prefixed) {
-        while (*s != '\0') { outBuf2[oi] = *s; oi++; s++; }
-        outBuf2[oi] = '\0';
+    if (knownTypeCount > 0) {
+        char outBuf2[512];
+        applyTypePrefixes(outBuf2, s);
         emitWithIndent(outBuf2);
     } else {
         emitWithIndent(s);
@@ -754,6 +829,16 @@ fn void processClassBodyLine(char* line) {
 
     // Method: fn ...
     if (strStartsWith(s, "fn ")) {
+        // Check if this is a declaration only (ends with ;) or has a body (ends with {)
+        int hasBody = 0;
+        {
+            char* cs = s;
+            while (*cs != '\0') {
+                if (*cs == '{') hasBody = 1;
+                cs++;
+            }
+        }
+
         // Close struct if not already done
         if (!structClosed) {
             outAppend("};");
@@ -765,14 +850,14 @@ fn void processClassBodyLine(char* line) {
         // Emit method signature
         emitMethodSignature(s);
 
-        // Now we need to track that we're inside a method body
-        // Count the opening { at end of signature
-        inMethod = 1;
-        methodBraceDepth = 0;
-        // The { is in the signature line we just emitted - count it
-        char* check = s;
-        while (*check != '\0') { if (*check == '{') methodBraceDepth++; check++; }
-        braceDepth = 1; // Method body indent
+        if (hasBody) {
+            // Now we need to track that we're inside a method body
+            inMethod = 1;
+            methodBraceDepth = 0;
+            char* check = s;
+            while (*check != '\0') { if (*check == '{') methodBraceDepth++; check++; }
+            braceDepth = 1; // Method body indent
+        }
         return;
     }
 
@@ -881,45 +966,72 @@ fn void processStructBodyLine(char* line) {
         outNewline();
 
         if (memberCount > 0) {
-            outAppend("struct ");
-            outAppend(currentClassName);
-            outAppend(" ");
-            outAppend(currentClassName);
-            outAppend("_new(");
+            // Count non-array, non-pointer members for _new params
+            int paramCount = 0;
             int j;
             for (j = 0; j < memberCount; j++) {
-                if (j > 0) outAppend(", ");
-                char convType[64];
-                convertType(convType, memberTypes[j]);
-                outAppend(convType);
-                outAppend(" ");
-                outAppend(memberNames[j]);
+                // Skip array members (contain '[') and pointer members (type ends with '*')
+                int isArr = 0; int k;
+                for (k = 0; memberNames[j][k] != '\0'; k++) { if (memberNames[j][k] == '[') { isArr = 1; break; } }
+                int isPtr = 0;
+                int tlen = strlen(memberTypes[j]);
+                if (tlen > 0 && memberTypes[j][tlen-1] == '*') isPtr = 1;
+                if (!isArr && !isPtr) paramCount++;
             }
-            outAppend(")");
-            outNewline();
-            outAppend("{");
-            outNewline();
-            outAppend("    struct ");
-            outAppend(currentClassName);
-            outAppend(" _result;");
-            outNewline();
-            outAppend("    memset(&_result, 0, sizeof(struct ");
-            outAppend(currentClassName);
-            outAppend("));");
-            outNewline();
-            for (j = 0; j < memberCount; j++) {
-                outAppend("    _result.");
-                outAppend(memberNames[j]);
-                outAppend(" = ");
-                outAppend(memberNames[j]);
-                outAppend(";");
+            if (paramCount > 0) {
+                outAppend("struct ");
+                outAppend(currentClassName);
+                outAppend(" ");
+                outAppend(currentClassName);
+                outAppend("_new(");
+                int first = 1;
+                for (j = 0; j < memberCount; j++) {
+                    int isArr = 0; int k;
+                    for (k = 0; memberNames[j][k] != '\0'; k++) { if (memberNames[j][k] == '[') { isArr = 1; break; } }
+                    int isPtr = 0;
+                    int tlen = strlen(memberTypes[j]);
+                    if (tlen > 0 && memberTypes[j][tlen-1] == '*') isPtr = 1;
+                    if (isArr || isPtr) continue;
+                    if (!first) outAppend(", ");
+                    first = 0;
+                    char convType[64];
+                    convertType(convType, memberTypes[j]);
+                    outAppend(convType);
+                    outAppend(" ");
+                    outAppend(memberNames[j]);
+                }
+                outAppend(")");
+                outNewline();
+                outAppend("{");
+                outNewline();
+                outAppend("    struct ");
+                outAppend(currentClassName);
+                outAppend(" _result;");
+                outNewline();
+                outAppend("    memset(&_result, 0, sizeof(struct ");
+                outAppend(currentClassName);
+                outAppend("));");
+                outNewline();
+                for (j = 0; j < memberCount; j++) {
+                    int isArr = 0; int k;
+                    for (k = 0; memberNames[j][k] != '\0'; k++) { if (memberNames[j][k] == '[') { isArr = 1; break; } }
+                    int isPtr = 0;
+                    int tlen = strlen(memberTypes[j]);
+                    if (tlen > 0 && memberTypes[j][tlen-1] == '*') isPtr = 1;
+                    if (isArr || isPtr) continue;
+                    outAppend("    _result.");
+                    outAppend(memberNames[j]);
+                    outAppend(" = ");
+                    outAppend(memberNames[j]);
+                    outAppend(";");
+                    outNewline();
+                }
+                outAppend("    return _result;");
+                outNewline();
+                outAppend("}");
+                outNewline();
                 outNewline();
             }
-            outAppend("    return _result;");
-            outNewline();
-            outAppend("}");
-            outNewline();
-            outNewline();
         }
 
         inStruct = 0;
@@ -928,16 +1040,59 @@ fn void processStructBodyLine(char* line) {
 
     if (*s == '\0') return;
 
+    // Parse full member line, handling compound types like 'unsigned char r'
+    // Strategy: read all words, the last identifier is the name, rest is type
     char type[64];
     char name[64];
-    copyWord(type, s);
-    s += strlen(type);
-    while (*s == ' ' || *s == '\t') s++;
-    int ni = 0;
-    while (*s != '\0' && *s != ';' && *s != '=' && *s != ' ') {
-        name[ni] = *s; ni++; s++;
+    type[0] = '\0';
+    name[0] = '\0';
+    // Read entire declaration up to ; or = into a temp buffer
+    char full[256];
+    int fi = 0;
+    while (*s != '\0' && *s != ';' && *s != '=' && fi < 255) {
+        full[fi] = *s; fi++; s++;
     }
-    name[ni] = '\0';
+    full[fi] = '\0';
+    // Trim trailing whitespace
+    while (fi > 0 && (full[fi-1]==' ' || full[fi-1]=='\t')) { fi--; full[fi]='\0'; }
+    // Find last word (the name) - scan from end
+    // First skip trailing pointer stars, spaces, and array brackets
+    int end = fi;
+    while (end > 0 && (full[end-1]=='*' || full[end-1]==' ' || full[end-1]=='\t')) end--;
+    // Also skip array suffix [N] to find the identifier
+    if (end > 0 && full[end-1] == ']') {
+        while (end > 0 && full[end-1] != '[') end--;
+        if (end > 0) end--; // skip [
+        while (end > 0 && (full[end-1]=='*' || full[end-1]==' ' || full[end-1]=='\t')) end--;
+    }
+    // Now find the last identifier (letters, digits, underscore)
+    int nameEnd = end;
+    while (nameEnd > 0 && isIdentChar(full[nameEnd-1])) nameEnd--;
+    int nameStart = nameEnd;
+    // Copy name (from nameStart to end, then add back array suffix)
+    {
+        // Find where array suffix starts in original
+        int arrEnd = fi;
+        while (arrEnd > end && full[arrEnd-1] != '[') arrEnd--;
+        int ni = 0;
+        int ne = nameStart;
+        while (ne < end && ni < 63) { name[ni] = full[ne]; ni++; ne++; }
+        // Append array suffix if present (arrEnd-1 points to '[')
+        if (arrEnd > end) {
+            arrEnd--; // back up to include the '['
+            while (arrEnd < fi && ni < 63) { name[ni] = full[arrEnd]; ni++; arrEnd++; }
+        }
+        name[ni] = '\0';
+    }
+    // Copy type (everything before nameStart, trimmed)
+    {
+        int ti = 0;
+        int ti2 = 0;
+        while (ti2 < nameStart && ti < 63) { type[ti] = full[ti2]; ti++; ti2++; }
+        // Trim trailing spaces
+        while (ti > 0 && type[ti-1]==' ') ti--;
+        type[ti] = '\0';
+    }
 
     if (memberCount < 64) {
         char* dt = memberTypes[memberCount];
@@ -959,6 +1114,26 @@ fn void processStructBodyLine(char* line) {
     } else if (strEq(type, "bool")) {
         memberLine[mi]='i';mi++;memberLine[mi]='n';mi++;memberLine[mi]='t';mi++;
     } else {
+        // Check if type needs struct/enum prefix (handle pointer types: 'Rectangle *' -> 'struct Rectangle *')
+        int kti;
+        for (kti = 0; kti < knownTypeCount; kti++) {
+            // Match type name at start, followed by space, *, or end-of-string
+            int tlen = strlen(knownTypeNames[kti]);
+            if (strStartsWith(type, knownTypeNames[kti])) {
+                char after = type[tlen];
+                if (after == '\0' || after == ' ' || after == '*') {
+                    if (knownTypeIsEnum[kti]) {
+                        memberLine[mi]='e';mi++;memberLine[mi]='n';mi++;memberLine[mi]='u';mi++;
+                        memberLine[mi]='m';mi++;memberLine[mi]=' ';mi++;
+                    } else {
+                        memberLine[mi]='s';mi++;memberLine[mi]='t';mi++;memberLine[mi]='r';mi++;
+                        memberLine[mi]='u';mi++;memberLine[mi]='c';mi++;memberLine[mi]='t';mi++;
+                        memberLine[mi]=' ';mi++;
+                    }
+                    break;
+                }
+            }
+        }
         char* tp = type;
         while (*tp != '\0') { memberLine[mi] = *tp; mi++; tp++; }
     }
@@ -1184,6 +1359,112 @@ fn void emitLine(char* line) {
     transpileLine(s);
 }
 
+// Strip module::prefix from a line (e.g. raylib6::init_window -> init_window)
+// Strips any word:: prefix that isn't 'io' or 'std' (those are handled by transpileLine)
+fn int isRawCC3ppi(char* content) {
+    // Detect if .c3ppi content is raw C (vendor) or C3++ (interface)
+    // C3++ has fn, class, import, module keywords at line starts
+    char* s = content;
+    while (*s != '\0') {
+        // Skip whitespace and comments
+        while (*s == ' ' || *s == '\t' || *s == '\n' || *s == '\r') s++;
+        if (*s == '/' && *(s+1) == '/') {
+            while (*s != '\0' && *s != '\n') s++;
+            continue;
+        }
+        if (*s == '/' && *(s+1) == '*') {
+            s += 2;
+            while (*s != '\0' && !(*s == '*' && *(s+1) == '/')) s++;
+            if (*s != '\0') s += 2;
+            continue;
+        }
+        // Check if line starts with C3++ keywords
+        if (s[0]=='f' && s[1]=='n' && s[2]==' ') return 0;
+        if (s[0]=='c' && s[1]=='l' && s[2]=='a' && s[3]=='s' && s[4]=='s' && s[5]==' ') return 0;
+        if (s[0]=='i' && s[1]=='m' && s[2]=='p' && s[3]=='o' && s[4]=='r' && s[5]=='t' && s[6]==' ') return 0;
+        if (s[0]=='m' && s[1]=='o' && s[2]=='d' && s[3]=='u' && s[4]=='l' && s[5]=='e' && s[6]==' ') return 0;
+        if (s[0]=='s' && s[1]=='t' && s[2]=='r' && s[3]=='u' && s[4]=='c' && s[5]=='t' && s[6]==' ') return 0;
+        if (s[0]=='e' && s[1]=='n' && s[2]=='u' && s[3]=='m' && s[4]==' ') return 0;
+        if (s[0]=='c' && s[1]=='o' && s[2]=='n' && s[3]=='s' && s[4]=='t' && s[5]==' ') return 0;
+        if (s[0]=='f' && s[1]=='a' && s[2]=='u' && s[3]=='l' && s[4]=='t' && s[5]==' ') return 0;
+        // Otherwise assume raw C
+        return 1;
+    }
+    // Empty content - treat as raw C
+    return 1;
+}
+
+fn void stripModulePrefixes(char* line) {
+    char result[2048];
+    int ri = 0;
+    char* s = line;
+    while (*s != '\0') {
+        // Skip string literals - don't strip inside quotes
+        if (*s == '"') {
+            result[ri] = *s; ri++; s++;
+            while (*s != '\0' && *s != '"') {
+                if (*s == '\\') {
+                    result[ri] = *s; ri++; s++;
+                    if (*s != '\0') { result[ri] = *s; ri++; s++; }
+                } else {
+                    result[ri] = *s; ri++; s++;
+                }
+            }
+            if (*s == '"') { result[ri] = *s; ri++; s++; }
+            continue;
+        }
+        // Skip char literals
+        if (*s == '\'') {
+            result[ri] = *s; ri++; s++;
+            while (*s != '\0' && *s != '\'') {
+                if (*s == '\\') {
+                    result[ri] = *s; ri++; s++;
+                    if (*s != '\0') { result[ri] = *s; ri++; s++; }
+                } else {
+                    result[ri] = *s; ri++; s++;
+                }
+            }
+            if (*s == '\'') { result[ri] = *s; ri++; s++; }
+            continue;
+        }
+        // Check for identifier::pattern
+        if (isIdentChar(*s)) {
+            // Read the word
+            char word[128];
+            int wi = 0;
+            char* ws = s;
+            while (isIdentChar(*ws) && wi < 127) {
+                word[wi] = *ws; wi++; ws++;
+            }
+            word[wi] = '\0';
+            // Check if followed by ::
+            if (*ws == ':' && *(ws+1) == ':') {
+                // Don't strip std or io (handled by transpileLine)
+                if (!strEq(word, "std") && !strEq(word, "io")) {
+                    // Skip the word and ::
+                    s = ws + 2;
+                    continue;
+                }
+            }
+            // Not a module prefix, copy the word
+            int j;
+            for (j = 0; j < wi; j++) {
+                result[ri] = word[j]; ri++;
+            }
+            s = ws;
+        } else {
+            result[ri] = *s; ri++;
+            s++;
+        }
+    }
+    result[ri] = '\0';
+    // Copy back
+    char* dst = line;
+    char* src = result;
+    while (*src != '\0') { *dst = *src; dst++; src++; }
+    *dst = '\0';
+}
+
 fn void transpile(char* source) {
     outInit();
     inClass = 0;
@@ -1193,6 +1474,8 @@ fn void transpile(char* source) {
     inMethod = 0;
 
     outAppend("/* Generated by c3ppc-bootstrap v6.0 */");
+    outNewline();
+    outAppend("#include <stdbool.h>");
     outNewline();
     outAppend("#include <string.h>");
     outNewline();
@@ -1209,6 +1492,8 @@ fn void transpile(char* source) {
         int li;
         for (li = 0; li < lineLen; li++) lineBuf[li] = line[li];
         lineBuf[lineLen] = '\0';
+        // Strip module::prefixes before transpiling
+        stripModulePrefixes(lineBuf);
         emitLine(lineBuf);
         if (*eol == '\n') eol++;
         line = eol;
@@ -1217,12 +1502,12 @@ fn void transpile(char* source) {
 
 fn int main(int argc, char** argv) {
     if (argc < 2) {
-        printf("c3ppc-bootstrap v6.0 - C3++ to C transpiler\n");
-        printf("Usage: c3ppc-bootstrap <input.c3pp> [-o output.c]\n");
+        printf("c3ppc-bootstrap v7.0 - C3++ to C transpiler\n");
+        printf("Usage: c3ppc-bootstrap <input.c3pp|.c3ppi> [-o output.c]\n");
         return 1;
     }
     if (strEq(argv[1], "--version")) {
-        printf("c3ppc-bootstrap 6.0.0\n");
+        printf("c3ppc-bootstrap 7.0.0\n");
         return 0;
     }
 
@@ -1245,15 +1530,162 @@ fn int main(int argc, char** argv) {
         return 1;
     }
 
-    transpile(source);
+    // Resolve non-std imports: find import lines, read .c3ppi files, prepend
+    // Build resolved source: scan for "import <module>;" where module is not std::
+    // .c3ppi files are collected separately and output raw (not transpiled)
+    char resolved[MAX_SOURCE];
+    char c3ppiBuf[MAX_SOURCE];
+    int ri = 0;
+    int c3ppiLen = 0;
+    c3ppiBuf[0] = '\0';
+    char* ls = source;
+    while (*ls != '\0') {
+        // Find end of line
+        char* le = ls;
+        while (*le != '\0' && *le != '\n') le++;
+        int llen = le - ls;
+        // Check if this line is a non-std import
+        int isImport = 0;
+        if (llen > 7 && ls[0]=='i' && ls[1]=='m' && ls[2]=='p' && ls[3]=='o' && ls[4]=='r' && ls[5]=='t' && ls[6]==' ') {
+            char* mp = ls + 7;
+            // Skip std:: imports
+            if (!(mp[0]=='s' && mp[1]=='t' && mp[2]=='d' && mp[3]==':')) {
+                isImport = 1;
+                // Extract module name
+                char modName[128];
+                int mi = 0;
+                while (*mp != '\0' && *mp != ';' && *mp != ' ' && *mp != '@' && mi < 127) {
+                    modName[mi] = *mp; mi++; mp++;
+                }
+                modName[mi] = '\0';
+                // Strip trailing spaces/semicolons
+                while (mi > 0 && (modName[mi-1]==';' || modName[mi-1]==' ')) { mi--; modName[mi]='\0'; }
+                // Convert :: to / for file path resolution (vendor::raylib6 -> vendor/raylib6)
+                char filePathMod[128];
+                int fmi = 0;
+                {
+                    char* mp2 = modName;
+                    while (*mp2 != '\0' && fmi < 127) {
+                        if (*mp2 == ':' && *(mp2+1) == ':') {
+                            filePathMod[fmi] = '/'; fmi++; mp2 += 2;
+                        } else {
+                            filePathMod[fmi] = *mp2; fmi++; mp2++;
+                        }
+                    }
+                }
+                filePathMod[fmi] = '\0';
+                // Try to find modName.c3ppi or modName.c3pp relative to input file
+                // Build path: directory of inputFile + "/" + modName + ".c3ppi"
+                // Find last / in inputFile to get directory
+                char dirPath[512];
+                int di = 0;
+                {
+                    char* sl = inputFile;
+                    char* lastSlash = 0;
+                    while (*sl != '\0') { if (*sl == '/') lastSlash = sl; sl++; }
+                    if (lastSlash) {
+                        char* cp = inputFile;
+                        while (cp <= lastSlash) { dirPath[di] = *cp; di++; cp++; }
+                    }
+                }
+                dirPath[di] = '\0';
+                // Try .c3ppi first
+                char filePath[512];
+                int found = 0;
+                // Build: dirPath + filePathMod + ".c3ppi"
+                {
+                    int fi = 0;
+                    char* dp = dirPath;
+                    while (*dp != '\0') { filePath[fi] = *dp; fi++; dp++; }
+                    char* mn = filePathMod;
+                    while (*mn != '\0') { filePath[fi] = *mn; fi++; mn++; }
+                    filePath[fi]='.';fi++;filePath[fi]='c';fi++;filePath[fi]='3';fi++;
+                    filePath[fi]='p';fi++;filePath[fi]='p';fi++;filePath[fi]='i';fi++;
+                    filePath[fi] = '\0';
+                    char depBuf[MAX_SOURCE];
+                    if (readFile(filePath, depBuf, MAX_SOURCE) >= 0) {
+                        if (isRawCC3ppi(depBuf)) {
+                            // Raw C (vendor): output as-is, not transpiled
+                            int di2 = 0;
+                            while (depBuf[di2] != '\0') {
+                                if (c3ppiLen < MAX_SOURCE - 1) { c3ppiBuf[c3ppiLen] = depBuf[di2]; c3ppiLen++; }
+                                di2++;
+                            }
+                            c3ppiBuf[c3ppiLen] = '\0';
+                        } else {
+                            // C3++ interface: transpile it (prepend to resolved)
+                            int di2 = 0;
+                            while (depBuf[di2] != '\0') {
+                                if (ri < MAX_SOURCE - 1) { resolved[ri] = depBuf[di2]; ri++; }
+                                di2++;
+                            }
+                        }
+                        found = 1;
+                    }
+                }
+                if (!found) {
+                    // Try .c3pp
+                    int fi = 0;
+                    char* dp = dirPath;
+                    while (*dp != '\0') { filePath[fi] = *dp; fi++; dp++; }
+                    char* mn = filePathMod;
+                    while (*mn != '\0') { filePath[fi] = *mn; fi++; mn++; }
+                    filePath[fi]='.';fi++;filePath[fi]='c';fi++;filePath[fi]='3';fi++;
+                    filePath[fi]='p';fi++;filePath[fi]='p';fi++;
+                    filePath[fi] = '\0';
+                    char depBuf[MAX_SOURCE];
+                    if (readFile(filePath, depBuf, MAX_SOURCE) >= 0) {
+                        // .c3pp files are transpiled (not raw)
+                        int di2 = 0;
+                        while (depBuf[di2] != '\0') {
+                            if (ri < MAX_SOURCE - 1) { resolved[ri] = depBuf[di2]; ri++; }
+                            di2++;
+                        }
+                        found = 1;
+                    }
+                }
+                if (!found) {
+                    // Not found - keep original import line
+                    while (*ls != '\0' && *ls != '\n') {
+                        if (ri < MAX_SOURCE - 1) { resolved[ri] = *ls; ri++; }
+                        ls++;
+                    }
+                } else {
+                    // Skip the import line itself (already resolved)
+                    while (*ls != '\0' && *ls != '\n') ls++;
+                }
+            }
+        }
+        if (!isImport) {
+            // Copy line as-is
+            while (*ls != '\0' && *ls != '\n') {
+                if (ri < MAX_SOURCE - 1) { resolved[ri] = *ls; ri++; }
+                ls++;
+            }
+        }
+        // Copy newline
+        if (*ls == '\n') {
+            if (ri < MAX_SOURCE - 1) { resolved[ri] = '\n'; ri++; }
+            ls++;
+        }
+    }
+    resolved[ri] = '\0';
 
+    transpile(resolved);
+
+    // Output: .c3ppi raw content first, then transpiled code
     if (outputFile != 0) {
-        if (writeFile(outputFile, outBuf) != 0) {
+        FILE* f = fopen(outputFile, "w");
+        if (f == 0) {
             printf("Error: cannot write '%s'\n", outputFile);
             return 1;
         }
-        printf("Compiled %s -> %s (%d bytes)\n", inputFile, outputFile, outLen);
+        if (c3ppiLen > 0) fwrite(c3ppiBuf, 1, c3ppiLen, f);
+        fwrite(outBuf, 1, outLen, f);
+        fclose(f);
+        printf("Compiled %s -> %s (%d bytes)\n", inputFile, outputFile, c3ppiLen + outLen);
     } else {
+        if (c3ppiLen > 0) printf("%s", c3ppiBuf);
         printf("%s", outBuf);
     }
     return 0;
