@@ -200,6 +200,9 @@ class C3ppCompiler:
                         member = ms.rstrip(';').strip()
                         member = re.sub(r'\bstring\b', 'char*', member)
                         member = re.sub(r'\bbool\b', 'int', member)
+                        member = re.sub(r'\buchar\b', 'unsigned char', member)
+                        member = re.sub(r'\bushort\b', 'unsigned short', member)
+                        member = re.sub(r'\buint\b', 'unsigned int', member)
                         out.append(f"    {member};")
                 out.append("};")
                 out.append("")
@@ -211,6 +214,9 @@ class C3ppCompiler:
                         rest = re.sub(r'\s*@\w+\([^)]*\)', '', rest)
                         rest = re.sub(r'\bstring\b', 'char*', rest)
                         rest = re.sub(r'\bbool\b', 'int', rest)
+                        rest = re.sub(r'\buchar\b', 'unsigned char', rest)
+                        rest = re.sub(r'\bushort\b', 'unsigned short', rest)
+                        rest = re.sub(r'\buint\b', 'unsigned int', rest)
                         parts2 = rest.split(None, 1)
                         ret_type = parts2[0] if parts2 else 'void'
                         if ret_type in self._known_classes:
@@ -238,6 +244,9 @@ class C3ppCompiler:
                 rest = re.sub(r'\s*@\w+\([^)]*\)', '', rest)
                 rest = re.sub(r'\bstring\b', 'char*', rest)
                 rest = re.sub(r'\bbool\b', 'int', rest)
+                rest = re.sub(r'\buchar\b', 'unsigned char', rest)
+                rest = re.sub(r'\bushort\b', 'unsigned short', rest)
+                rest = re.sub(r'\buint\b', 'unsigned int', rest)
                 # Strip trailing { or ; and re-add ; without body
                 rest = rest.rstrip().rstrip('{').rstrip().rstrip(';')
                 # Add struct/enum prefix to return type and params
@@ -539,6 +548,9 @@ class C3ppCompiler:
         # Convert C3++ types to C
         s = re.sub(r'\bstring\b', 'char*', s)
         s = re.sub(r'\bbool\b', 'int', s)
+        s = re.sub(r'\buchar\b', 'unsigned char', s)
+        s = re.sub(r'\bushort\b', 'unsigned short', s)
+        s = re.sub(r'\buint\b', 'unsigned int', s)
         # Add struct/enum prefix for known types (skip if already prefixed)
         if self._known_classes:
             parts = s.split(None, 1)
@@ -615,6 +627,9 @@ class C3ppCompiler:
             params = 'void'
         params = re.sub(r'\bstring\b', 'char*', params)
         params = re.sub(r'\bbool\b', 'int', params)
+        params = re.sub(r'\buchar\b', 'unsigned char', params)
+        params = re.sub(r'\bushort\b', 'unsigned short', params)
+        params = re.sub(r'\buint\b', 'unsigned int', params)
         out.append(f"struct {class_name} {class_name}_new({params})")
         out.append("{")
         out.append(f"    struct {class_name} _result;")
@@ -703,6 +718,9 @@ class C3ppCompiler:
             rest = 'int main' + rest[9:]
         rest = re.sub(r'\bstring\b', 'char*', rest)
         rest = re.sub(r'\bbool\b', 'int', rest)
+        rest = re.sub(r'\buchar\b', 'unsigned char', rest)
+        rest = re.sub(r'\bushort\b', 'unsigned short', rest)
+        rest = re.sub(r'\buint\b', 'unsigned int', rest)
         # Apply struct/enum prefix to return type and params
         if self._known_classes:
             for cname in self._known_classes:
@@ -805,7 +823,7 @@ class C3ppCompiler:
                 parts = lhs.split()
                 if len(parts) >= 2:
                     # Skip primitive type keywords or known struct/enum types
-                    known_types = self._known_classes | {'int', 'float', 'double', 'char', 'unsigned', 'long', 'short', 'bool', 'size_t'}
+                    known_types = self._known_classes | {'int', 'float', 'double', 'char', 'unsigned', 'long', 'short', 'bool', 'size_t', 'uint', 'uchar', 'ushort'}
                     # Consume all leading type words (handles unsigned int, etc.)
                     idx = 0
                     while idx < len(parts) and parts[idx] in known_types:

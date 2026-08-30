@@ -217,6 +217,10 @@ fn void convertType(char* dst, char* src) {
     if (strEq(src, "string"))  { *dst='c';dst++;*dst='h';dst++;*dst='a';dst++;*dst='r';dst++;*dst='*';dst++;*dst='\0'; return; }
     if (strEq(src, "bool"))    { *dst='i';dst++;*dst='n';dst++;*dst='t';dst++;*dst='\0'; return; }
     if (strEq(src, "string[]")){ *dst='c';dst++;*dst='h';dst++;*dst='a';dst++;*dst='r';dst++;*dst='*';dst++;*dst='*';dst++;*dst='\0'; return; }
+    // C3++ type aliases to C types
+    if (strEq(src, "uint"))   { char* d="unsigned int";  while(*d){*dst=*d;dst++;d++;}*dst='\0'; return; }
+    if (strEq(src, "uchar"))  { char* d="unsigned char"; while(*d){*dst=*d;dst++;d++;}*dst='\0'; return; }
+    if (strEq(src, "ushort")) { char* d="unsigned short";while(*d){*dst=*d;dst++;d++;}*dst='\0'; return; }
     // Check if type needs struct/enum prefix
     int kti;
     for (kti = 0; kti < knownTypeCount; kti++) {

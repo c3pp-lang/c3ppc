@@ -51,10 +51,10 @@ struct Matrix {
 }
 
 struct Color {
-    unsigned char r;
-    unsigned char g;
-    unsigned char b;
-    unsigned char a;
+    uchar r;
+    uchar g;
+    uchar b;
+    uchar a;
 }
 
 struct Rectangle {
@@ -73,7 +73,7 @@ struct Image {
 }
 
 struct Texture {
-    unsigned int id;
+    uint id;
     int width;
     int height;
     int mipmaps;
@@ -81,7 +81,7 @@ struct Texture {
 }
 
 struct RenderTexture {
-    unsigned int id;
+    uint id;
     Texture texture;
     Texture depth;
 }
@@ -145,37 +145,37 @@ struct BoundingBox {
 }
 
 struct Wave {
-    unsigned int frameCount;
-    unsigned int sampleRate;
-    unsigned int sampleSize;
-    unsigned int channels;
+    uint frameCount;
+    uint sampleRate;
+    uint sampleSize;
+    uint channels;
     void *data;
 }
 
 struct Sound {
-    unsigned int frameCount;
-    unsigned int stream;
-    unsigned int streamBufferSize;
+    uint frameCount;
+    uint stream;
+    uint streamBufferSize;
 }
 
 struct Music {
     int ctxType;
     void *ctxData;
-    unsigned int frameCount;
-    unsigned int looping;
+    uint frameCount;
+    uint looping;
     int streamType;
-    unsigned int sampleRate;
-    unsigned int sampleSize;
-    unsigned int channels;
-    unsigned int loopBegin;
-    unsigned int loopEnd;
+    uint sampleRate;
+    uint sampleSize;
+    uint channels;
+    uint loopBegin;
+    uint loopEnd;
     void *data;
 }
 
 struct AudioStream {
-    unsigned int sampleRate;
-    unsigned int sampleSize;
-    unsigned int channels;
+    uint sampleRate;
+    uint sampleSize;
+    uint channels;
     void *buffer;
     void *processor;
 }
@@ -200,14 +200,14 @@ struct Mesh {
     float *texcoords2;
     float *normals;
     float *tangents;
-    unsigned char *colors;
-    unsigned short *indices;
+    uchar *colors;
+    ushort *indices;
     float *animVertices;
     float *animNormals;
-    unsigned char *boneIds;
+    uchar *boneIds;
     float *boneWeights;
-    unsigned int vaoId;
-    unsigned int vboId[7];
+    uint vaoId;
+    uint vboId[7];
 }
 
 struct Model {
@@ -228,27 +228,27 @@ struct ModelAnimation {
 }
 
 struct Shader {
-    unsigned int id;
+    uint id;
     int *locs;
 }
 
 // ── Config flags ────────────────────────────────────────────────
 
-const unsigned int FLAG_VSYNC_HINT              = 0x00000040;
-const unsigned int FLAG_WINDOW_RESIZABLE        = 0x00000004;
-const unsigned int FLAG_WINDOW_UNDECORATED      = 0x00000008;
-const unsigned int FLAG_WINDOW_HIDDEN           = 0x00000080;
-const unsigned int FLAG_WINDOW_MINIMIZED        = 0x00000200;
-const unsigned int FLAG_WINDOW_MAXIMIZED        = 0x00000400;
-const unsigned int FLAG_WINDOW_UNFOCUSED        = 0x00000800;
-const unsigned int FLAG_WINDOW_TOPMOST          = 0x00001000;
-const unsigned int FLAG_WINDOW_ALWAYS_RUN       = 0x00000100;
-const unsigned int FLAG_WINDOW_TRANSPARENT      = 0x00000002;
-const unsigned int FLAG_WINDOW_HIGHDPI          = 0x00002000;
-const unsigned int FLAG_WINDOW_MOUSE_PASSTHROUGH= 0x00004000;
-const unsigned int FLAG_BORDERLESS_WINDOWED_MODE= 0x00008000;
-const unsigned int FLAG_MSAA_4X_HINT            = 0x00000020;
-const unsigned int FLAG_INTERLACED_HINT         = 0x00010000;
+const uint FLAG_VSYNC_HINT              = 0x00000040;
+const uint FLAG_WINDOW_RESIZABLE        = 0x00000004;
+const uint FLAG_WINDOW_UNDECORATED      = 0x00000008;
+const uint FLAG_WINDOW_HIDDEN           = 0x00000080;
+const uint FLAG_WINDOW_MINIMIZED        = 0x00000200;
+const uint FLAG_WINDOW_MAXIMIZED        = 0x00000400;
+const uint FLAG_WINDOW_UNFOCUSED        = 0x00000800;
+const uint FLAG_WINDOW_TOPMOST          = 0x00001000;
+const uint FLAG_WINDOW_ALWAYS_RUN       = 0x00000100;
+const uint FLAG_WINDOW_TRANSPARENT      = 0x00000002;
+const uint FLAG_WINDOW_HIGHDPI          = 0x00002000;
+const uint FLAG_WINDOW_MOUSE_PASSTHROUGH= 0x00004000;
+const uint FLAG_BORDERLESS_WINDOWED_MODE= 0x00008000;
+const uint FLAG_MSAA_4X_HINT            = 0x00000020;
+const uint FLAG_INTERLACED_HINT         = 0x00010000;
 
 // ── Log levels ──────────────────────────────────────────────────
 
@@ -614,8 +614,8 @@ fn Vector2 GetTouchPosition(int finger);
 fn int  GetTouchPointCount();
 
 // Input - Gestures
-fn void SetGesturesEnabled(unsigned int flags);
-fn int  IsGestureDetected(unsigned int gesture);
+fn void SetGesturesEnabled(uint flags);
+fn int  IsGestureDetected(uint gesture);
 fn int  GetGestureDetected();
 fn float GetGestureHoldDuration();
 fn Vector2 GetGestureDragVector();
@@ -687,7 +687,7 @@ fn void DrawTexturePro(Texture texture, Rectangle source, Rectangle dest, Vector
 fn Color Fade(Color color, float alpha);
 fn int  ColorToInt(Color color);
 fn Color ColorFromHSV(float hue, float saturation, float value);
-fn Color GetColor(unsigned int hexValue);
+fn Color GetColor(uint hexValue);
 fn int  GetPixelDataSize(int width, int height, int format);
 
 // Models
